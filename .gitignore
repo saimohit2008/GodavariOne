@@ -1,0 +1,141 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (strict secret protection, allow example template only)
+.env*
+!.env.example
+mobile/.env*
+!mobile/.env.example
+
+# database directory, sqlite binaries, and backups
+/db/
+db/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.backup
+*.auth-backup
+*.bak*
+*.dump
+/backups/
+backups/
+
+# scratch directory, migration scripts, and test artifacts
+/scratch/
+scratch/
+
+# local uploads and test media
+/upload/
+upload/
+/public/uploads/
+public/uploads/
+/private_documents/
+private_documents/
+/download/
+download/
+
+# internal automation and migration scripts
+/.zscripts/
+.zscripts/
+*.ps1
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+local-*
+.claude
+.z-ai-config
+*.log
+dev.log
+dev.out.log
+test
+prompt
+server.log
+
+# Skills directory
+/skills/
+
+# Additional secret and credential protection
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+service-account*.json
+secrets/
+.secrets/
+
+# Internal deployment, security and migration reports
+GODAVARI_ONE_AI_DEPLOYMENT_GUIDE.md
+GODAVARI_ONE_AI_GO_LIVE_CHECKLIST.md
+GODAVARI_ONE_AI_RATE_LIMITER_REPORT.md
+GODAVARI_ONE_AI_STAGING_DEPLOYMENT_CHECKLIST.md
+POSTGRESQL_MIGRATION_PREPARATION.md
+GITHUB_RELEASE_READINESS_REPORT.md
+
+# Internal project documentation and audit reports
+/docs/
+
+# Private internal reports and working notes
+GODAVARI_ONE_*.md
+AGENTS.md
+OPEN-IN-ANTIGRAVITY.md
+worklog.md
+mobile/AGENTS.md
+/mobile/docs/
+
+# Reverse proxy and experimental prototypes (excluded from public release)
+Caddyfile
+/Caddyfile
+/examples/
+examples/
+/mini-services/
+mini-services/
+
+# Root EAS duplicate (mobile/eas.json is authoritative)
+/eas.json
+
+# IDE and editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Internal database maintenance and audit scripts
+/scripts/
+scripts/

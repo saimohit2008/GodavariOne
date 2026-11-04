@@ -1,0 +1,1308 @@
+// Godavari One — Godavari Pushkaralu 2027 Digital Platform
+// Prisma schema (SQLite for local development, portable to PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// USERS, ROLES, SESSIONS, AUTH
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  phone        String   @unique
+  email        String?
+  name         String?
+  // scrypt hash, never plaintext
+  passwordHash String?
+  // Exactly 7 approved application roles: "SUPER_ADMIN" | "VISITOR" | "BUSINESS_OWNER" | "BOOKING_REVIEWER" | "GHAT_SUPERVISOR" | "PUROHIT" | "NRI_SERVICE_MANAGER"
+  role         String   @default("VISITOR")
+  // "ACTIVE" | "SUSPENDED" | "DEACTIVATED"
+  status       String   @default("ACTIVE")
+  phoneVerified Boolean @default(false)
+  emailVerified Boolean @default(false)
+  // MFA secret (TOTP) for SUPER_ADMIN, base32, encrypted-at-rest in production
+  mfaSecret    String?
+  mfaEnabled   Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions       Session[]
+  listingsOwned  Listing[]        @relation("OwnerListings")
+  assignments   Assignment[]
+  bookings       RestaurantBooking[] @relation("UserRestaurantBookings")
+  hotelBookings  HotelBooking[]      @relation("UserHotelBookings")
+  ghatReports    GhatReport[]
+  notifications  Notification[]
+  favorites      Favorite[]
+  auditLogs      AuditLog[]         @relation("ActorAuditLogs")
+  reviews        Review[]           @relation("UserReviews")
+  reviewReports  ReviewReport[]     @relation("UserReviewReports")
+  moderatedReviews Review[]         @relation("ModeratedReviews")
+  resolvedReports ReviewReport[]    @relation("ResolvedReports")
+  createdUsers   User[]              @relation("UserCreatedBy")
+  createdBy      User?               @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdById    String?
+  otpChallenges  OtpChallenge[]
+  createdBanners CarouselBanner[]    @relation("BannerCreatedBy")
+  editedBanners  CarouselBanner[]    @relation("BannerLastEditedBy")
+  createdHomepageItems HomepageContentItem[] @relation("ItemCreatedBy")
+  editedHomepageItems  HomepageContentItem[] @relation("ItemLastEditedBy")
+  freeAccommodationBookings FreeAccommodationBooking[]
+  nriRequests             NriPackageRequest[]        @relation("VisitorNriRequests")
+  nriAssignments          NriRequestAssignment[]     @relation("ProviderNriAssignments")
+  nriQuotations           NriQuotation[]             @relation("ProviderNriQuotations")
+  nriMessages             NriMessage[]               @relation("UserNriMessages")
+  managedNriRequests      NriPackageRequest[]        @relation("ManagerNriRequests")
+  purohitProfile          PurohitProfile?
+  ceremonyBookings        CeremonyBooking[]          @relation("VisitorCeremonyBookings")
+  priorityBookingsSubmitted PriorityGhatBooking[]    @relation("ApplicantPriorityBookings")
+  priorityBookingsReviewed  PriorityGhatBooking[]    @relation("ReviewerPriorityBookings")
+  priorityBookingsCheckedIn PriorityGhatBooking[]    @relation("CheckInPriorityBookings")
+  timeSlotsCreated          GhatTimeSlot[]           @relation("TimeSlotCreatedBy")
+  emailNotifications        EmailNotification[]
+
+  @@index([createdById])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  // "PASSWORD" | "OTP" | "ADMIN"
+  authMethod String  @default("PASSWORD")
+  mfaCleared Boolean @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model OtpChallenge {
+  id        String   @id @default(cuid())
+  phone     String
+  // sha-256 hex hash of the OTP code
+  codeHash  String
+  // "LOGIN" | "REGISTER" | "RESET"
+  purpose   String   @default("LOGIN")
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+
+  @@index([phone])
+  @@index([userId])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  userId    String?
+
+  @@index([email])
+}
+
+model PendingRegistration {
+  id           String   @id @default(cuid())
+  phone        String   @unique
+  email        String
+  name         String
+  passwordHash String
+  phoneVerified Boolean @default(false)
+  emailVerified Boolean @default(false)
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+}
+
+// ---------------------------------------------------------------------------
+// ASSIGNMENTS (owner/editor/ghat/category/booking-queue scoping)
+// ---------------------------------------------------------------------------
+
+model Assignment {
+  id        String   @id @default(cuid())
+  userId    String
+  // "LISTING_OWNER" | "GHAT_REPORTER" | "GHAT_SUPERVISOR" |
+  // "CATEGORY_EDITOR" | "BOOKING_REVIEWER"
+  type      String
+  // polymorphic scoping
+  listingId String?
+  category  String?
+  district  String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([listingId])
+}
+
+// ---------------------------------------------------------------------------
+// LISTINGS + CATEGORY-SPECIFIC DETAILS + IMAGES
+// ---------------------------------------------------------------------------
+
+model Listing {
+  id           String   @id @default(cuid())
+  name         String
+  // Exactly 9 approved directory categories: "RESTAURANT" | "HOTEL" | "GHAT" | "HOSPITAL" | "TRANSPORT" | "TOURIST_SPOT" | "FREE_ACCOMMODATION" | "ANNADANAM" | "CEREMONY"
+  category     String
+  description  String
+  address      String
+  district     String?
+  town         String?
+  locality     String?
+  phone        String?
+  email        String?
+  latitude     Float?
+  longitude    Float?
+  mapsUrl      String?
+  // location verified means coords validated
+  locationVerified Boolean @default(false)
+  accessibility String? // JSON string of accessibility flags
+  facilities    String? // JSON string of facilities
+  // publication lifecycle: "DRAFT" | "PENDING" | "APPROVED" | "PUBLISHED" |
+  // "REJECTED" | "SUSPENDED" | "ARCHIVED"
+  publicationStatus String @default("DRAFT")
+  // "UNVERIFIED" | "VERIFIED"
+  verificationStatus String @default("UNVERIFIED")
+  rejectionReason String?
+  verifiedById String?
+  verifiedAt   DateTime?
+  ownerId      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner       User?           @relation("OwnerListings", fields: [ownerId], references: [id])
+  images      ListingImage[]
+  assignments Assignment[]
+  schedule    ListingSchedule?
+  restaurantDetails RestaurantDetails?
+  hotelDetails      HotelDetails?
+  hotelRooms        HotelRoom[]
+  ghatDetails       GhatDetails?
+  hospitalDetails   HospitalDetails?
+  transportDetails  TransportDetails?
+  touristDetails    TouristDetails?
+  freeAccommodationDetails FreeAccommodationDetails?
+  annadanamDetails         AnnadanamDetails?
+  restaurantBookings RestaurantBooking[]
+  hotelBookings     HotelBooking[]
+  freeAccommodationBookings FreeAccommodationBooking[]
+  ghatReports       GhatReport[]
+  favorites         Favorite[]
+  reviews           Review[]
+  homepageItems     HomepageContentItem[]
+  carouselBanners   CarouselBanner[]
+  priorityBookings  PriorityGhatBooking[]
+  ghatTimeSlots     GhatTimeSlot[]
+
+  @@index([category])
+  @@index([publicationStatus])
+  @@index([ownerId])
+  @@index([publicationStatus, createdAt(sort: Desc)])
+  @@index([publicationStatus, category, createdAt(sort: Desc)])
+  @@index([district, town])
+}
+
+model ListingImage {
+  id        String   @id @default(cuid())
+  listingId String
+  // relative path under uploads dir, e.g. /uploads/2027/abc.jpg
+  url       String
+  filename  String
+  mimeType  String
+  sizeBytes Int
+  isPrimary Boolean  @default(false)
+  orderIdx  Int      @default(0)
+  createdAt DateTime @default(now())
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model RestaurantDetails {
+  listingId           String  @id
+  cuisine             String?
+  // "VEG" | "NON_VEG" | "EGGETARIAN" | "BOTH"
+  foodType            String?
+  priceRange          String?
+  openingHours        String?
+  tableCapacity       Int?
+  reservationAvailable Boolean @default(true)
+  seatingAccessibility String?
+  listing             Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model HotelDetails {
+  listingId        String  @id
+  accommodationType String?
+  roomTypes        String? // JSON
+  numRooms         Int?
+  roomCapacity     Int?
+  checkInTime      String?
+  checkOutTime     String?
+  amenities        String? // JSON
+  priceRange       String?
+  bookingContact   String?
+  listing          Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model GhatDetails {
+  listingId         String  @id
+  accessRoutes      String? // JSON
+  facilities        String? // JSON
+  accessibility     String? // JSON
+  medicalAssistance String?
+  // current crowd status mirror for quick reads
+  currentCrowdStatus String? // "FREE" | "MODERATE" | "CROWDED" | "OVERCROWDED" | "EMERGENCY"
+  statusUpdatedAt   DateTime?
+  supervisorId      String?
+  listing           Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model HospitalDetails {
+  listingId         String  @id
+  facilityType      String?
+  emergencyAvailable Boolean @default(false)
+  services          String? // JSON
+  operatingHours    String?
+  listing           Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model TransportDetails {
+  listingId    String  @id
+  transportType String? // "TAXI" | "AUTO" | "BUS" | "RENTAL"
+  serviceAreas String? // JSON
+  vehicleDetails String?
+  pricing      String?
+  driverOption  Boolean @default(false)
+  listing       Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model TouristDetails {
+  listingId      String  @id
+  openingHours   String?
+  entryFee       String?
+  facilities     String? // JSON
+  accessibility  String? // JSON
+  directions     String?
+  listing        Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model FreeAccommodationDetails {
+  listingId           String    @id
+  accommodationType   String?   // "DORMITORY" | "HALL" | "ROOMS" | "MIXED"
+  availableTypes      String?   // JSON array e.g. ["Dormitory Hall", "Separate Family Rooms", "Senior Citizen Floor"]
+  totalCapacity       Int?
+  availableCapacity   Int?
+  capacityMen         Int?
+  availableMen        Int?
+  capacityWomen       Int?
+  availableWomen      Int?
+  capacityFamily      Int?
+  availableFamily     Int?
+  checkInTime         String?   // e.g. "08:00"
+  checkOutTime        String?   // e.g. "20:00"
+  maxStayDays         Int?      @default(3)
+  rules               String?
+  eligibilityCriteria String?   // Required docs e.g. "Aadhaar Card, Pilgrim Pass"
+  amenities           String?   // JSON array e.g. ["Drinking Water", "Mattresses/Bedding", "Western Toilets", "Bathing Facilities", "Lockers"]
+  requiresRegistration Boolean  @default(false)
+  registrationUrl     String?
+  registrationContact String?
+  isTemporarilyUnavailable Boolean @default(false)
+  availabilityStatus  String?   // "AVAILABLE" | "FEW_LEFT" | "FULL" | "NOT_CONFIRMED" | "UNAVAILABLE"
+  lastAvailabilityUpdate DateTime?
+  updatedById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  listing             Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model AnnadanamDetails {
+  listingId           String    @id
+  organizationName    String?
+  distributionType    String?   // "MEALS" | "ANNADANAM" | "PRASADAM" | "ALL"
+  dietaryInfo         String?   // "PURE_VEG" | "SATVIK" | "PRASADAM_ONLY"
+  servingStatus       String    @default("ACTIVE") // "ACTIVE" | "PAUSED" | "ENDED" | "TEMPORARILY_UNAVAILABLE"
+  sessions            String?   // JSON array of sessions e.g. [{"name":"Morning Breakfast","start":"07:00","end":"09:30","type":"BREAKFAST"}]
+  seatingCapacity     Int?
+  queueWaitMinutes    Int?      // Estimated wait time in minutes
+  remainingServings   Int?      // Optional live servings count
+  eligibilityRules    String?
+  specialDates        String?   // Date or festival notes
+  lastStatusUpdate    DateTime?
+  updatedById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  listing             Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// BOOKINGS
+// ---------------------------------------------------------------------------
+
+model RestaurantBooking {
+  id             String   @id @default(cuid())
+  listingId      String
+  userId         String
+  bookingDate    String   // YYYY-MM-DD
+  timeSlot       String   // e.g. "12:30"
+  peopleCount    Int
+  specialRequest String?
+  // "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW"
+  status         String   @default("PENDING")
+  rejectionReason String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  listing        Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user           User     @relation("UserRestaurantBookings", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, bookingDate, timeSlot])
+  @@index([userId])
+}
+
+model ListingSchedule {
+  id                     String    @id @default(cuid())
+  listingId              String    @unique
+  open24Hours            Boolean   @default(false)
+  isTemporarilyClosed    Boolean   @default(false)
+  temporaryClosureReason String?
+  temporaryClosureUntil  DateTime?
+  openingTime            String?   // "HH:MM" e.g. "06:00" in IST
+  closingTime            String?   // "HH:MM" e.g. "21:00" in IST
+  operatingDays          String?   // JSON array e.g. ["MONDAY","TUESDAY",...]
+  closedDays             String?   // JSON array e.g. ["SUNDAY"]
+  breakStart             String?   // "HH:MM" e.g. "13:00"
+  breakEnd               String?   // "HH:MM" e.g. "16:00"
+  intervals              String?   // JSON array e.g. [{"open":"06:00","close":"12:00"},{"open":"17:00","close":"21:00"}]
+  specialHours           String?   // JSON array of { date: string, isClosed: boolean, open?: string, close?: string, note?: string }
+  timezone               String    @default("Asia/Kolkata")
+  lastUpdatedById        String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  listing                Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model HotelRoom {
+  id               String         @id @default(cuid())
+  listingId        String
+  name             String         // e.g. Standard, Deluxe, Family Suite, Dormitory
+  roomIdentifier   String?        // e.g. "101-110", "Block A"
+  description      String?
+  totalRooms       Int            @default(1)
+  maxAdults        Int            @default(2)
+  maxChildren      Int            @default(1)
+  maxGuests        Int            @default(3)
+  basePrice        Float          @default(0)
+  extraPersonPrice Float          @default(0)
+  amenities        String?        // JSON array of strings
+  bedType          String?        // e.g. "1 King Bed", "2 Twin Beds"
+  bedCount         Int            @default(1)
+  images           String?        // JSON array of URLs
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  listing          Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bookings         HotelBooking[]
+
+  @@index([listingId])
+  @@index([isActive])
+}
+
+model HotelBooking {
+  id             String      @id @default(cuid())
+  listingId      String
+  roomId         String?
+  userId         String
+  checkIn        String      // YYYY-MM-DD
+  checkOut       String      // YYYY-MM-DD
+  guests         Int
+  rooms          Int
+  adults         Int?
+  children       Int?
+  basePrice      Float?
+  extraCharges   Float?
+  totalPrice     Float?
+  specialRequest String?
+  status         String      @default("PENDING")
+  rejectionReason String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  checkedInAt    DateTime?
+  checkedOutAt   DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  listing        Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  room           HotelRoom?  @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  user           User        @relation("UserHotelBookings", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, checkIn, checkOut])
+  @@index([roomId, checkIn, checkOut])
+  @@index([userId])
+}
+
+model FreeAccommodationBooking {
+  id             String    @id @default(cuid())
+  listingId      String
+  userId         String
+  checkInDate    String    // YYYY-MM-DD
+  checkOutDate   String    // YYYY-MM-DD
+  peopleCount    Int
+  groupType      String    @default("FAMILY") // "MEN" | "WOMEN" | "FAMILY" | "MIXED"
+  guestName      String
+  guestPhone     String
+  idProofType    String?   // "AADHAAR" | "VOTER_ID" | "PASSPORT"
+  idProofNumber  String?
+  specialNotes   String?
+  status         String    @default("CONFIRMED") // "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW"
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  listing        Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, checkInDate])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// GHAT CROWD MONITORING
+// ---------------------------------------------------------------------------
+
+model GhatReport {
+  id            String   @id @default(cuid())
+  listingId     String
+  reporterId    String
+  // "FREE" | "MODERATE" | "CROWDED" | "OVERCROWDED" | "EMERGENCY"
+  crowdStatus   String
+  notes         String?
+  // "BLOCKED_ACCESS" | "MEDICAL_ASSISTANCE" | "FACILITY_ISSUE" | "NONE"
+  incidentType  String   @default("NONE")
+  // "SUBMITTED" | "ACKNOWLEDGED" | "ESCALATED" | "RESOLVED"
+  reviewStatus  String   @default("SUBMITTED")
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+  createdAt     DateTime @default(now())
+  listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reporter      User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([reporterId])
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS, FAVORITES, AUDIT
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  targetType String?
+  targetId  String?
+  details   String? // JSON
+  ip        String?
+  createdAt DateTime @default(now())
+  actor     User?    @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWS & FEEDBACK SYSTEM
+// ---------------------------------------------------------------------------
+
+model Review {
+  id               String         @id @default(cuid())
+  listingId        String
+  userId           String
+  rating           Int            // 1 to 5
+  title            String?
+  content          String         // feedback description
+  issueCategory    String?        // "CLEANLINESS" | "OVERCROWDING" | "SAFETY" | "STAFF_BEHAVIOUR" | "FACILITIES" | "PRICING" | "SERVICE_QUALITY" | "GENERAL"
+  photos           String?        // JSON array of strings
+  status           String         @default("PUBLISHED") // "PUBLISHED" | "HIDDEN" | "REMOVED"
+  isFlagged        Boolean        @default(false)
+  flagReason       String?
+  moderatedById    String?
+  moderationReason String?        // "ABUSIVE_LANGUAGE" | "SPAM" | "PERSONAL_INFO" | "HARASSMENT" | "IRRELEVANT" | "OTHER"
+  moderatedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  listing          Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user             User           @relation("UserReviews", fields: [userId], references: [id], onDelete: Cascade)
+  moderator        User?          @relation("ModeratedReviews", fields: [moderatedById], references: [id], onDelete: SetNull)
+  reports          ReviewReport[]
+
+  @@index([listingId, status])
+  @@index([userId])
+  @@index([status])
+  @@index([moderatedById])
+}
+
+model ReviewReport {
+  id              String    @id @default(cuid())
+  reviewId        String
+  reporterId      String
+  reason          String    // "ABUSIVE_LANGUAGE" | "SPAM" | "PERSONAL_INFO" | "HARASSMENT" | "IRRELEVANT" | "OTHER"
+  details         String?
+  status          String    @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
+  resolvedById    String?
+  resolutionNotes String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  review          Review    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reporter        User      @relation("UserReviewReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolver        User?     @relation("ResolvedReports", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([reviewId, reporterId])
+  @@index([reviewId])
+  @@index([reporterId])
+  @@index([status])
+  @@index([resolvedById])
+}
+
+// ---------------------------------------------------------------------------
+// HOMEPAGE CAROUSEL BANNERS
+// ---------------------------------------------------------------------------
+
+model CarouselBanner {
+  id              String    @id @default(cuid())
+  title           String
+  subtitle        String?
+  description     String?
+  imageUrl        String
+  destinationUrl  String?
+  orderIdx        Int       @default(0)
+  isEnabled       Boolean   @default(true)
+  status          String    @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
+  startDate       DateTime?
+  endDate         DateTime?
+  contentType     String    @default("GENERAL_PROMOTION") // "ADVERTISEMENT" | "EVENT" | "ANNOUNCEMENT" | "TOURIST_ATTRACTION" | "HOTEL" | "RESTAURANT" | "NRI_INFORMATION" | "GENERAL_PROMOTION"
+  advertiserName  String?
+  contactPhone    String?
+  contactEmail    String?
+  location        String?
+  websiteUrl      String?
+  ctaLabel        String?   @default("Learn More")
+  destinationType String    @default("EXTERNAL_URL") // "DIRECTORY_LISTING" | "NRI_SECTION" | "INTERNAL_PAGE" | "EXTERNAL_URL"
+  listingId       String?
+  slug            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdById     String?
+  lastEditedById  String?
+
+  listing         Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  createdBy       User?     @relation("BannerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastEditedBy    User?     @relation("BannerLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
+
+  @@index([isEnabled, status, orderIdx])
+  @@index([contentType])
+  @@index([listingId])
+  @@index([createdById])
+  @@index([lastEditedById])
+}
+
+// ---------------------------------------------------------------------------
+// HOMEPAGE SECTION CONFIGURATION & CONTENT MANAGEMENT
+// ---------------------------------------------------------------------------
+
+model HomepageSection {
+  id          String   @id // e.g. "hero", "carousel", "announcements", "categories", "featured_listings", "free_services", "ghats", "accessibility"
+  name        String
+  description String?
+  isEnabled   Boolean  @default(true)
+  orderIdx    Int      @default(0)
+  settings    String?  // JSON formatted configuration
+  updatedAt   DateTime @updatedAt
+  lastEditedById String?
+}
+
+model HomepageContentItem {
+  id             String    @id @default(cuid())
+  section        String    // "HERO" | "CAROUSEL" | "ANNOUNCEMENT" | "PROMO_BANNER" | "FEATURED_LISTING" | "FREE_SERVICES" | "CUSTOM"
+  title          String
+  description    String?
+  buttonText     String?
+  imageUrl       String?
+  destinationUrl String?
+  listingId      String?
+  badgeText      String?
+  orderIdx       Int       @default(0)
+  isEnabled      Boolean   @default(true)
+  status         String    @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
+  startDate      DateTime?
+  endDate        DateTime?
+  metadata       String?   // JSON string
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  lastEditedById String?
+
+  listing        Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  createdBy      User?     @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastEditedBy   User?     @relation("ItemLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
+
+  @@index([section, isEnabled, status, orderIdx])
+  @@index([listingId])
+  @@index([createdById])
+  @@index([lastEditedById])
+}
+
+// ---------------------------------------------------------------------------
+// NRI CUSTOM PACKAGE REQUESTS, QUOTATIONS & BOOKING WORKFLOW
+// ---------------------------------------------------------------------------
+
+model NriPackageRequest {
+  id                      String    @id @default(cuid())
+  referenceNumber         String    @unique // e.g. "NRI-2027-ABC123"
+  visitorId               String?   // Linked to User if authenticated
+  visitorName             String
+  visitorEmail            String
+  visitorPhone            String
+  countryOfResidence      String
+  groupSize               Int       // 2 to 10
+  numAdults               Int
+  numChildren             Int
+  arrivalDate             String    // YYYY-MM-DD
+  departureDate           String    // YYYY-MM-DD
+  arrivalLocation         String
+  departureLocation       String
+  accommodationPreference String
+  numRooms                Int?      @default(1)
+  dietaryPreference       String
+  specialRequests         String?
+  preferredItinerary      String?
+  budgetRange             String?
+  currency                String    @default("INR")
+  targetProviderId        String?   // Specific provider requested by visitor, if any
+  status                  String    @default("SUBMITTED") // SUBMITTED, ASSIGNED, IN_PROGRESS, QUOTATION_SENT, REVISION_REQUESTED, QUOTATION_ACCEPTED, AWAITING_FINAL_CONFIRMATION, CONFIRMED, DECLINED, EXPIRED, CANCELLED, CLOSED
+  confirmedQuotationId    String?
+  confirmationNotes       String?
+  confirmedAt             DateTime?
+  responseDeadline        DateTime?
+  preferredCommunication  String?   @default("WHATSAPP")
+  accessibilityRequirements String?
+  daysCount               Int?
+  nightsCount             Int?
+  placesToVisit           String?
+  preferredGhats          String?
+  preferredTemples        String?
+  preferredRoomType       String?
+  transportRequirements   String?
+  localGuideRequired      Boolean?  @default(false)
+  guideLanguage           String?
+  ceremonyRequirements    String?
+  packageTypePreference   String?
+  additionalInstructions  String?
+  assignedManagerId       String?
+  rejectionReason         String?
+  cancellationReason      String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  visitor                 User?                  @relation("VisitorNriRequests", fields: [visitorId], references: [id], onDelete: SetNull)
+  assignedManager         User?                  @relation("ManagerNriRequests", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  assignments             NriRequestAssignment[]
+  quotations              NriQuotation[]
+  messages                NriMessage[]
+  statusHistory           NriStatusHistory[]
+  tripItineraryItems      NriTripItineraryItem[]
+  tripTasks               NriTripTask[]
+
+  @@index([referenceNumber])
+  @@index([visitorId])
+  @@index([assignedManagerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model NriRequestAssignment {
+  id            String    @id @default(cuid())
+  requestId     String
+  providerId    String
+  status        String    @default("ASSIGNED") // "ASSIGNED" | "VIEWED" | "IN_PROGRESS" | "QUOTED" | "DECLINED"
+  declineReason String?
+  assignedAt    DateTime  @default(now())
+  viewedAt      DateTime?
+  respondedAt   DateTime?
+
+  request       NriPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider      User              @relation("ProviderNriAssignments", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, providerId])
+  @@index([providerId, status])
+  @@index([requestId])
+}
+
+model NriQuotation {
+  id                  String    @id @default(cuid())
+  quotationNumber     String    @unique // e.g. "QTE-2027-ABC123"
+  requestId           String
+  providerId          String
+  version             Int       @default(1)
+  status              String    @default("DRAFT") // "DRAFT" | "SENT" | "REVISION_REQUESTED" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "CONFIRMED" | "CLOSED"
+  title               String
+  description         String?
+  durationDays        Int
+  checkInDate         String
+  checkOutDate        String
+  itinerary           String    // JSON array of day schedules
+  pickupDropDetails   String?
+  vehicleType         String?
+  vehicleCapacity     Int?
+  hotelName           String?
+  roomType            String?
+  numberOfRooms       Int?      @default(1)
+  accommodationDetails String?
+  mealPlan            String?
+  guideServices       String?
+  inclusions          String    // JSON array
+  exclusions          String    // JSON array
+  termsAndConditions  String?
+  cancellationPolicy  String?
+  accommodationCost   Float     @default(0)
+  transportCost       Float     @default(0)
+  foodCost            Float     @default(0)
+  guideCost           Float     @default(0)
+  otherCharges        Float     @default(0)
+  taxAmount           Float     @default(0)
+  discountAmount      Float     @default(0)
+  totalPrice          Float
+  pricePerPerson      Float
+  currency            String    @default("INR")
+  ceremonyCost        Float     @default(0)
+  additionalFeesExplanation String?
+  validUntil          DateTime?
+  managerNotes        String?
+  internalNotes       String?
+  pricingNotes        String?
+  revisionNotes       String?
+  withdrawalReason    String?
+  submittedAt         DateTime?
+  acceptedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  request             NriPackageRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider            User                   @relation("ProviderNriQuotations", fields: [providerId], references: [id], onDelete: Cascade)
+  versions            NriQuotationVersion[]
+  lineItems           NriQuotationLineItem[]
+
+  @@index([requestId])
+  @@index([providerId])
+  @@index([status])
+}
+
+model NriQuotationVersion {
+  id            String       @id @default(cuid())
+  quotationId   String
+  version       Int
+  snapshot      String       // JSON string of quotation snapshot
+  changeSummary String?
+  createdById   String
+  createdAt     DateTime     @default(now())
+
+  quotation     NriQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationId, version])
+  @@index([quotationId])
+}
+
+model NriQuotationLineItem {
+  id          String       @id @default(cuid())
+  quotationId String
+  category    String       // "ACCOMMODATION" | "TRANSPORT" | "MEALS" | "SIGHTSEEING_GUIDE" | "TAX_FEES" | "DISCOUNT" | "OTHER"
+  description String
+  quantity    Int          @default(1)
+  unitPrice   Float
+  totalPrice  Float
+  isOptional  Boolean      @default(false)
+
+  quotation   NriQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId])
+}
+
+model NriMessage {
+  id               String            @id @default(cuid())
+  requestId        String
+  senderId         String
+  senderRole       String            // "VISITOR" | "BUSINESS_OWNER" | "SUPER_ADMIN"
+  senderName       String
+  message          String
+  attachments      String?
+  readByRecipient  Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+
+  request          NriPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  sender           User              @relation("UserNriMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@index([senderId])
+}
+
+model NriStatusHistory {
+  id            String            @id @default(cuid())
+  requestId     String
+  fromStatus    String
+  toStatus      String
+  changedById   String?
+  changedByName String?
+  reason        String?
+  createdAt     DateTime          @default(now())
+
+  request       NriPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// NRI PORTAL CONFIGURATION & MANAGED CONTENT (ANNOUNCEMENTS, SERVICES, CARDS)
+// ---------------------------------------------------------------------------
+
+model NriConfig {
+  id                  String   @id @default("default")
+  isEnabled           Boolean  @default(true)
+  heroTitle           String   @default("Curated All-Inclusive Pilgrimage Packages for Godavari Pushkaralu 2027")
+  heroDescription     String?
+  welcomeMessage      String?
+  supportPhone        String?
+  supportEmail        String?
+  supportInstructions String?
+  helplineHours       String?
+  externalGuideUrl    String?
+  customLinks         String?  // JSON array of { label, url, description }
+  visibilitySettings  String?  // JSON formatted visibility flags
+  updatedAt           DateTime @updatedAt
+  lastEditedById      String?
+}
+
+model NriContentItem {
+  id             String    @id @default(cuid())
+  type           String    @default("CARD") // "SERVICE" | "CARD" | "ANNOUNCEMENT" | "NOTICE" | "FAQ"
+  title          String
+  subtitle       String?
+  description    String?
+  content        String?
+  icon           String?
+  badgeText      String?
+  linkUrl        String?
+  linkText       String?
+  orderIdx       Int       @default(0)
+  isEnabled      Boolean   @default(true)
+  status         String    @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  lastEditedById String?
+
+  @@index([type, isEnabled, status, orderIdx])
+}
+
+// ---------------------------------------------------------------------------
+// TRIP COORDINATION & CEREMONY MANAGEMENT (PUROHITS & BOOKINGS)
+// ---------------------------------------------------------------------------
+
+model NriTripItineraryItem {
+  id                      String    @id @default(cuid())
+  requestId               String
+  dayNumber               Int
+  date                    String    // YYYY-MM-DD
+  timeSlot                String?   // e.g. "06:30 - 08:30"
+  activityTitle           String
+  location                String?
+  accommodationDetails    String?
+  transportDetails        String?
+  assignedProvider        String?
+  bookingConfirmationCode String?
+  instructions            String?
+  internalNotes           String?
+  visitorNotes            String?
+  status                  String    @default("SCHEDULED") // "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "RESCHEDULED" | "CANCELLED"
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  request                 NriPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, dayNumber])
+}
+
+model NriTripTask {
+  id              String    @id @default(cuid())
+  requestId       String
+  title           String
+  description     String?
+  category        String    @default("GENERAL") // "ACCOMMODATION" | "TRANSPORT" | "VIP_PASS" | "PUROHIT" | "GUIDE" | "MEALS" | "GENERAL"
+  assignedTo      String?
+  dueDate         String?
+  status          String    @default("PENDING") // "PENDING" | "IN_PROGRESS" | "CONFIRMED" | "COMPLETED" | "CANCELLED"
+  confirmationRef String?
+  internalNotes   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  request         NriPackageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, status])
+}
+
+model PurohitProfile {
+  id                  String    @id @default(cuid())
+  userId              String?   @unique
+  fullName            String
+  profilePhotoUrl     String?
+  phone               String
+  email               String?
+  address             String
+  serviceArea         String
+  languages           String    // JSON array: ["Telugu", "Sanskrit", "Hindi", "English"]
+  ceremonies          String    // JSON array of ceremony types
+  experienceYears     Int       @default(5)
+  qualifications      String?
+  customaryPractices  String?
+  baseFee             Float     @default(0)
+  feeIncludes         String?
+  preferredContact    String    @default("PHONE") // "PHONE" | "WHATSAPP" | "EMAIL"
+  workingDays         String    @default("[\"MONDAY\",\"TUESDAY\",\"WEDNESDAY\",\"THURSDAY\",\"FRIDAY\",\"SATURDAY\",\"SUNDAY\"]")
+  workingHoursStart   String    @default("06:00") // HH:MM
+  workingHoursEnd     String    @default("18:00") // HH:MM
+  breakStart          String?   @default("12:30") // HH:MM
+  breakEnd            String?   @default("14:00") // HH:MM
+  slotDurationMinutes Int       @default(60)
+  advanceBookingDays  Int       @default(60)
+  cancellationHours   Int       @default(24)
+  verificationStatus  String    @default("PENDING") // "PENDING" | "VERIFIED" | "REJECTED"
+  isActive            Boolean   @default(true)
+  isPublished         Boolean   @default(true)
+  supportingDocuments String?   // JSON array of document objects { name, url, uploadDate }
+  bio                 String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user                User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bookings            CeremonyBooking[]
+  blockedPeriods      PurohitBlockedSlot[]
+
+  @@index([verificationStatus, isActive, isPublished])
+  @@index([serviceArea])
+}
+
+model PurohitBlockedSlot {
+  id          String    @id @default(cuid())
+  purohitId   String
+  startDate   String    // YYYY-MM-DD
+  endDate     String    // YYYY-MM-DD
+  startTime   String?   // HH:MM
+  endTime     String?   // HH:MM
+  reason      String?
+  isAllDay    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  purohit     PurohitProfile @relation(fields: [purohitId], references: [id], onDelete: Cascade)
+
+  @@index([purohitId, startDate, endDate])
+}
+
+model CeremonyBooking {
+  id                     String    @id @default(cuid())
+  bookingReference       String    @unique // e.g. "CER-2027-ABC123"
+  purohitId              String
+  visitorId              String?
+  visitorName            String
+  visitorPhone           String
+  visitorEmail           String?
+  ceremonyType           String
+  bookingDate            String    // YYYY-MM-DD
+  startTime              String    // HH:MM
+  endTime                String    // HH:MM
+  durationMinutes        Int       @default(60)
+  participantsCount      Int       @default(1)
+  locationType           String    @default("GHAT") // "GHAT" | "HOME_HOTEL" | "TEMPLE"
+  locationAddress        String
+  customaryRequirements String?
+  serviceFee             Float     @default(0)
+  currency               String    @default("INR")
+  feeIncludes            String?
+  status                 String    @default("PENDING") // "PENDING" | "CONFIRMED" | "DECLINED" | "RESCHEDULE_REQUESTED" | "CANCELLED" | "COMPLETED"
+  declineReason          String?
+  cancellationReason     String?
+  rescheduleReason       String?
+  rescheduleProposedDate String?
+  rescheduleProposedTime String?
+  confirmedAt            DateTime?
+  completedAt            DateTime?
+  internalNotes          String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  purohit                PurohitProfile @relation(fields: [purohitId], references: [id], onDelete: Cascade)
+  visitor                User?          @relation("VisitorCeremonyBookings", fields: [visitorId], references: [id], onDelete: SetNull)
+  statusHistory          CeremonyBookingStatusHistory[]
+
+  @@index([purohitId, bookingDate, status])
+  @@index([bookingReference])
+  @@index([visitorId])
+  @@index([status])
+}
+
+model CeremonyBookingStatusHistory {
+  id            String          @id @default(cuid())
+  bookingId     String
+  fromStatus    String
+  toStatus      String
+  changedById   String?
+  changedByName String?
+  reason        String?
+  createdAt     DateTime        @default(now())
+
+  booking       CeremonyBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// PRIORITY GHAT BOOKINGS (Senior Citizens 65+ & Persons with Disabilities)
+// ---------------------------------------------------------------------------
+
+model GhatTimeSlot {
+  id                 String   @id @default(cuid())
+  ghatId             String
+  slotDate           String   // YYYY-MM-DD
+  startTime          String   // HH:MM (24-hour, e.g. "06:00")
+  endTime            String   // HH:MM (24-hour, e.g. "07:30")
+  maxCapacity        Int      @default(50)
+  allocatedCount     Int      @default(0)
+  status             String   @default("ACTIVE") // "ACTIVE" | "PAUSED" | "CLOSED"
+  accessibilityNotes String?
+  maxAccompanying    Int      @default(1)
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  ghat               Listing  @relation(fields: [ghatId], references: [id], onDelete: Cascade)
+  createdBy          User?    @relation("TimeSlotCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  bookings           PriorityGhatBooking[]
+
+  @@index([ghatId, slotDate, status])
+  @@index([slotDate])
+  @@index([createdById])
+}
+
+model PriorityGhatBooking {
+  id                       String    @id @default(cuid())
+  applicationNumber        String    @unique // e.g. "PGB-2027-ABC123"
+  qrPassToken              String?   @unique // Cryptographic opaque token for verified entry
+  ghatId                   String
+  timeSlotId               String?
+  userId                   String?   // User account who submitted the application
+  category                 String    // "SENIOR_CITIZEN" | "PERSON_WITH_DISABILITY"
+  beneficiaryName          String
+  beneficiaryDob           String?   // YYYY-MM-DD (mandatory for SENIOR_CITIZEN)
+  beneficiaryAge           Int?
+  beneficiaryPhone         String
+  beneficiaryEmail         String?
+  isCaregiverApplication   Boolean   @default(false)
+  applicantName            String?
+  applicantPhone           String?
+  applicantRelationship    String?
+  visitDate                String    // Proposed/assigned visit date YYYY-MM-DD
+  accompanyingCount        Int       @default(0)
+  accessibilityNeeds       String?   // Wheelchair, ramp assistance, guide, etc.
+  documentPath             String    // Stored in private directory, never public
+  documentOriginalName     String
+  documentMimeType         String
+  documentSizeBytes        Int
+  documentUploadedAt       DateTime  @default(now())
+  // Workflow: "SUBMITTED" | "UNDER_REVIEW" | "ADDITIONAL_PROOF_REQUIRED" | "APPROVED" | "SLOT_ASSIGNED" | "REJECTED" | "CANCELLED" | "CHECKED_IN"
+  status                   String    @default("SUBMITTED")
+  reviewerId               String?
+  reviewerNotes            String?
+  rejectionReason          String?
+  additionalProofNotes     String?
+  superAdminOverrideReason String?
+  slotAssignedAt           DateTime?
+  checkedInAt              DateTime?
+  checkedInById            String?
+  checkedInMethod          String?   // "QR_SCAN" | "MANUAL_VERIFICATION"
+  applicantDeclaration     Boolean   @default(true)
+  consentGiven             Boolean   @default(true)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  ghat                     Listing   @relation(fields: [ghatId], references: [id], onDelete: Cascade)
+  timeSlot                 GhatTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+  user                     User?     @relation("ApplicantPriorityBookings", fields: [userId], references: [id], onDelete: SetNull)
+  reviewer                 User?     @relation("ReviewerPriorityBookings", fields: [reviewerId], references: [id], onDelete: SetNull)
+  checkedInBy              User?     @relation("CheckInPriorityBookings", fields: [checkedInById], references: [id], onDelete: SetNull)
+  history                  PriorityBookingHistory[]
+
+  @@index([ghatId, status])
+  @@index([category, status])
+  @@index([userId])
+  @@index([visitDate])
+  @@index([timeSlotId])
+  @@index([reviewerId])
+  @@index([checkedInById])
+}
+
+model PriorityBookingHistory {
+  id            String   @id @default(cuid())
+  bookingId     String
+  fromStatus    String
+  toStatus      String
+  changedById   String?
+  changedByName String?
+  reason        String?
+  metadata      String?  // JSON
+  createdAt     DateTime @default(now())
+
+  booking       PriorityGhatBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// AUTOMATED EMAIL NOTIFICATIONS OUTBOX & AUDIT
+// ---------------------------------------------------------------------------
+
+model EmailNotification {
+  id                String    @id @default(cuid())
+  eventType         String    // "BOOKING_SUCCESSFUL" | "BOOKING_CANCELLED" | "BOOKING_APPROVED" | "BOOKING_REJECTED" | "BOOKING_RESCHEDULED" | "BOOKING_REMINDER_24H" | "BOOKING_REMINDER_2H" | "GHAT_CLOSURE" | "GHAT_REOPENED"
+  userId            String?
+  bookingId         String?
+  bookingReference  String?
+  bookingCategory   String?   // "HOTEL" | "RESTAURANT" | "CEREMONY" | "GHAT_PRIORITY" | "FREE_ACCOMMODATION" | "NRI_PACKAGE"
+  recipientEmail    String
+  recipientName     String?
+  language          String    @default("en") // "en" | "te"
+  subject           String
+  payload           String    // JSON string containing safe template render fields
+  status            String    @default("PENDING") // "PENDING" | "PROCESSING" | "SENT" | "FAILED" | "CANCELLED"
+  attemptCount      Int       @default(0)
+  maxAttempts       Int       @default(3)
+  providerMessageId String?
+  scheduledFor      DateTime  @default(now())
+  sentAt            DateTime?
+  lastError         String?
+  idempotencyKey    String    @unique
+  metadata          String?   // JSON string
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledFor])
+  @@index([userId])
+  @@index([bookingId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// AI ASSISTANT PLATFORM: RATE LIMITING, CONFIGURATION & BUDGET ENFORCEMENT
+// ---------------------------------------------------------------------------
+
+model AIRateLimit {
+  id           String   @id // Cryptographically hashed identifier: sha256(prefix + id + windowEpoch)
+  requestCount Int      @default(1)
+  windowStart  DateTime @default(now())
+  expiresAt    DateTime // Used for automated pruning
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@index([windowStart])
+}
+
+model AISystemConfig {
+  id               String   @id @default("default")
+  isEnabled        Boolean  @default(true)
+  provider         String   @default("gemini")
+  model            String   @default("gemini-1.5-flash")
+  monthlyBudgetCap Float    @default(25.0)
+  temperature      Float    @default(0.3)
+  maxTokens        Int      @default(800)
+  rateLimitPerMin  Int      @default(30)
+  updatedBy        String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+}
+
+model AIUsageLog {
+  id               String   @id @default(cuid())
+  conversationId   String?
+  userId           String?
+  userRole         String   @default("VISITOR")
+  provider         String   // "gemini" | "openai" | "groq" | "mock"
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  costUsd          Float    @default(0.0)
+  status           String   @default("COMPLETED") // "RESERVED" | "COMPLETED" | "FAILED" | "RELEASED"
+  isReservation    Boolean  @default(false)
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
