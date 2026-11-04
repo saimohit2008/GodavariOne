@@ -34,10 +34,11 @@ export const GET = handler(async (req: NextRequest) => {
     ];
   }
 
-  const [total, sent, pending, failed, cancelled, items] = await Promise.all([
+  const [total, sent, pending, processing, failed, cancelled, items] = await Promise.all([
     db.emailNotification.count({ where }),
     db.emailNotification.count({ where: { ...where, status: "SENT" } }),
     db.emailNotification.count({ where: { ...where, status: "PENDING" } }),
+    db.emailNotification.count({ where: { ...where, status: "PROCESSING" } }),
     db.emailNotification.count({ where: { ...where, status: "FAILED" } }),
     db.emailNotification.count({ where: { ...where, status: "CANCELLED" } }),
     db.emailNotification.findMany({
@@ -105,6 +106,7 @@ export const GET = handler(async (req: NextRequest) => {
       total,
       sent,
       pending,
+      processing,
       failed,
       cancelled,
     },

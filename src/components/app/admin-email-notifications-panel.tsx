@@ -64,6 +64,43 @@ interface StatsSummary {
   cancelled: number;
 }
 
+const safeNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : fallback;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return fallback;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
+const DEFAULT_STATS: StatsSummary = Object.freeze({
+  total: 0,
+  sent: 0,
+  pending: 0,
+  processing: 0,
+  failed: 0,
+  cancelled: 0,
+});
+
+const normalizeStats = (raw: unknown): StatsSummary => {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_STATS };
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    total: safeNumber(obj.total, 0),
+    sent: safeNumber(obj.sent, 0),
+    pending: safeNumber(obj.pending, 0),
+    processing: safeNumber(obj.processing, 0),
+    failed: safeNumber(obj.failed, 0),
+    cancelled: safeNumber(obj.cancelled, 0),
+  };
+};
+
 export function AdminEmailNotificationsPanel() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -72,14 +109,7 @@ export function AdminEmailNotificationsPanel() {
 
   // Data
   const [notifications, setNotifications] = useState<EmailNotificationRecord[]>([]);
-  const [stats, setStats] = useState<StatsSummary>({
-    total: 0,
-    sent: 0,
-    pending: 0,
-    processing: 0,
-    failed: 0,
-    cancelled: 0,
-  });
+  const [stats, setStats] = useState<StatsSummary>({ ...DEFAULT_STATS });
 
   // Query filters
   const [page, setPage] = useState(1);
@@ -106,15 +136,19 @@ export function AdminEmailNotificationsPanel() {
         throw new Error(`Failed to load notifications: HTTP ${res.status}`);
       }
       const data = await res.json();
-      if (data.ok) {
-        setNotifications(data.items || []);
-        if (data.stats) setStats(data.stats);
+      if (data && data.ok) {
+        setNotifications(Array.isArray(data.items) ? data.items : []);
+        setStats(normalizeStats(data.stats));
         if (data.pagination) {
-          setTotalPages(data.pagination.totalPages || 1);
+          const tp = safeNumber(data.pagination.totalPages, 1);
+          setTotalPages(tp > 0 ? tp : 1);
         }
+      } else {
+        setStats({ ...DEFAULT_STATS });
       }
     } catch (err: any) {
       console.error("[EmailNotificationsPanel] Error fetching:", err);
+      setStats({ ...DEFAULT_STATS });
       toast({
         title: "Failed to load notifications",
         description: err.message || "Could not retrieve email notification records.",
@@ -169,7 +203,7 @@ export function AdminEmailNotificationsPanel() {
       if (res.ok && data.ok) {
         toast({
           title: "Queue Worker Executed",
-          description: `Processed ${data.result?.processed || 0} notifications (${data.result?.succeeded || 0} sent, ${data.result?.failed || 0} failed).`,
+          description: `Processed ${safeNumber(data.result?.processed)} notifications (${safeNumber(data.result?.succeeded)} sent, ${safeNumber(data.result?.failed)} failed).`,
         });
         fetchNotifications();
       } else {
@@ -263,7 +297,7 @@ export function AdminEmailNotificationsPanel() {
             <Mail className="size-5" />
           </span>
           <div>
-            <div className="text-2xl font-bold tracking-tight">{stats.total}</div>
+            <div className="text-2xl font-bold tracking-tight">{safeNumber(stats.total)}</div>
             <div className="text-xs text-muted-foreground font-medium">Total Notifications</div>
           </div>
         </div>
@@ -273,7 +307,7 @@ export function AdminEmailNotificationsPanel() {
             <CheckCircle2 className="size-5" />
           </span>
           <div>
-            <div className="text-2xl font-bold tracking-tight text-emerald-700">{stats.sent}</div>
+            <div className="text-2xl font-bold tracking-tight text-emerald-700">{safeNumber(stats.sent)}</div>
             <div className="text-xs text-muted-foreground font-medium">Delivered via Resend</div>
           </div>
         </div>
@@ -284,7 +318,7 @@ export function AdminEmailNotificationsPanel() {
           </span>
           <div>
             <div className="text-2xl font-bold tracking-tight text-amber-700">
-              {stats.pending + stats.processing}
+              {safeNumber(stats.pending) + safeNumber(stats.processing)}
             </div>
             <div className="text-xs text-muted-foreground font-medium">Pending / Scheduled</div>
           </div>
@@ -295,7 +329,7 @@ export function AdminEmailNotificationsPanel() {
             <AlertTriangle className="size-5" />
           </span>
           <div>
-            <div className="text-2xl font-bold tracking-tight text-red-700">{stats.failed}</div>
+            <div className="text-2xl font-bold tracking-tight text-red-700">{safeNumber(stats.failed)}</div>
             <div className="text-xs text-muted-foreground font-medium">Failed Attempts</div>
           </div>
         </div>

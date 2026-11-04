@@ -56,6 +56,26 @@ function createReq(method: string, url: string, sessionToken?: string, body?: an
   });
 }
 
+async function waitForNotificationStatus(
+  where: { bookingId?: string; eventType?: string; userId?: string; [key: string]: any },
+  expectedStatus = "SENT",
+  timeoutMs = 5000,
+  pollIntervalMs = 50
+) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const notif = await prisma.emailNotification.findFirst({ where });
+    if (notif && notif.status === expectedStatus) {
+      return notif;
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  const last = await prisma.emailNotification.findFirst({ where });
+  throw new Error(
+    `Timed out waiting for notification matching ${JSON.stringify(where)} to reach status '${expectedStatus}'. Current status: ${last?.status ?? "NOT_FOUND"} (lastError: ${last?.lastError ?? "none"})`
+  );
+}
+
 describe("GODAVARI ONE — Complete Automated Email Notification System Suite", () => {
   const originalFetch = globalThis.fetch;
   const dispatchedEmails: Array<{ url: string; payload: any }> = [];
@@ -556,6 +576,14 @@ describe("GODAVARI ONE — Complete Automated Email Notification System Suite", 
       const createData = await createRes.json();
       const booking = createData.booking || createData;
 
+      // 1b. Reliable test-only synchronization: wait for booking-creation email to finish dispatching
+      const creationNotif = await waitForNotificationStatus(
+        { bookingId: booking.id, eventType: "BOOKING_SUCCESSFUL" },
+        "SENT"
+      );
+      assert.strictEqual(creationNotif.status, "SENT");
+
+      // 1c. Only then reset dispatchedEmails
       dispatchedEmails.length = 0;
 
       // 2. Unauthorized user cannot approve
@@ -573,14 +601,10 @@ describe("GODAVARI ONE — Complete Automated Email Notification System Suite", 
       const approveRes = await updateRestaurantBooking(approveReq, { params: Promise.resolve({ id: booking.id }) });
       assert.strictEqual(approveRes.status, 200);
 
-      await new Promise((r) => setTimeout(r, 200));
-
-      const approveNotification = await prisma.emailNotification.findFirst({
-        where: {
-          bookingId: booking.id,
-          eventType: "BOOKING_APPROVED",
-        },
-      });
+      const approveNotification = await waitForNotificationStatus(
+        { bookingId: booking.id, eventType: "BOOKING_APPROVED" },
+        "SENT"
+      );
       assert.ok(approveNotification);
       assert.strictEqual(approveNotification.recipientEmail, visitorUser.email);
       assert.strictEqual(approveNotification.status, "SENT");
@@ -600,6 +624,11 @@ describe("GODAVARI ONE — Complete Automated Email Notification System Suite", 
       const createData = await createRes.json();
       const booking = createData.booking || createData;
 
+      // Wait for booking creation email to finish dispatching before reset
+      await waitForNotificationStatus(
+        { bookingId: booking.id, eventType: "BOOKING_SUCCESSFUL" },
+        "SENT"
+      );
       dispatchedEmails.length = 0;
 
       // 2. Reject by Super Admin
@@ -610,14 +639,10 @@ describe("GODAVARI ONE — Complete Automated Email Notification System Suite", 
       const rejectRes = await updateRestaurantBooking(rejectReq, { params: Promise.resolve({ id: booking.id }) });
       assert.strictEqual(rejectRes.status, 200);
 
-      await new Promise((r) => setTimeout(r, 200));
-
-      const rejectNotification = await prisma.emailNotification.findFirst({
-        where: {
-          bookingId: booking.id,
-          eventType: "BOOKING_REJECTED",
-        },
-      });
+      const rejectNotification = await waitForNotificationStatus(
+        { bookingId: booking.id, eventType: "BOOKING_REJECTED" },
+        "SENT"
+      );
       assert.ok(rejectNotification);
       assert.strictEqual(rejectNotification.recipientEmail, visitorUser.email);
 
