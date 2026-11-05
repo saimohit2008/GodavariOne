@@ -169,21 +169,28 @@ During audit verification of the configured Resend credentials:
    - Automated processing of pending and queued emails.
    - Dispatching 24-hour and 2-hour pre-booking reminder alerts.
    - Retrying transient email failures.
-2. **Vercel Cron Configuration File**:
-   A `vercel.json` file has been prepared at the project root:
+2. **Vercel Hobby Plan Cron Limitations**:
+   - Vercel's Hobby (Free) plan limits cron jobs to running **at most once per day** (minimum 24-hour interval) with a maximum of 2 cron jobs per project.
+   - Schedules more frequent than once per day (such as `*/5 * * * *`) are rejected during build/deployment on Hobby accounts.
+3. **Configured Schedule (`vercel.json`)**:
+   A `vercel.json` file is configured with a once-daily schedule at `00:30 UTC` (`06:00 AM IST`):
    ```json
    {
      "$schema": "https://openapi.vercel.sh/vercel.json",
      "crons": [
        {
          "path": "/api/v1/notifications/cron",
-         "schedule": "*/5 * * * *"
+         "schedule": "30 0 * * *"
        }
      ]
    }
    ```
-3. **Authentication**:
+4. **Authentication**:
    - Vercel automatically attaches `Authorization: Bearer <CRON_SECRET>` to cron requests when `CRON_SECRET` is defined in Vercel Environment Variables.
+5. **Business Logic & High-Frequency Alternatives on Hobby**:
+   - **Zero Business Logic Impact**: Immediate notifications (OTP verification, registration, immediate booking confirmations) are dispatched immediately upon user action and do not depend on cron timing.
+   - **Admin On-Demand Processor**: Super Admins can manually trigger batch outbox processing at any time via the Admin Email Notifications dashboard.
+   - **Free External Cron Option**: If 5-minute precision is desired without upgrading to Vercel Pro, a free external cron monitor (e.g., [cron-job.org](https://cron-job.org) or GitHub Actions) can ping `GET https://<your-vercel-domain>/api/v1/notifications/cron` with header `Authorization: Bearer <CRON_SECRET>` every 5 minutes.
 
 ---
 
@@ -218,7 +225,7 @@ During audit verification of the configured Resend credentials:
 | 6 | SQLite Cloud Anti-Fallback Guard | `src/lib/db.ts` throws fatal error if SQLite on Vercel | **READY** |
 | 7 | Cloud Storage Configuration | `OBJECT_STORAGE_PROVIDER="supabase"` | **READY** |
 | 8 | Resend API Key Validation | Validated sending-only key (`422` on empty probe) | **READY** |
-| 9 | Cron Schedule | `vercel.json` configured for 5-minute interval | **READY** |
+| 9 | Cron Schedule | `vercel.json` configured for daily interval (`30 0 * * *`, Hobby-compatible) | **READY** |
 | 10 | Security Headers & CORS | Configured in `next.config.ts` | **READY** |
 | 11 | Full Test Suite Pass Rate | 275 of 275 tests passed (`npm test`) | **READY** |
 | 12 | TypeScript Compilation | 0 errors (`npm run typecheck`) | **READY** |
