@@ -99,9 +99,6 @@ export const GET = handler(async (req: NextRequest) => {
       orderBy,
       take: limit + 1,
     };
-    if (isPg) {
-      queryOptions.relationLoadStrategy = "join";
-    }
 
     const fetched = await db.listing.findMany(queryOptions);
     if (fetched.length <= limit) {
@@ -119,9 +116,6 @@ export const GET = handler(async (req: NextRequest) => {
       skip: (page - 1) * limit,
       take: limit,
     };
-    if (isPg) {
-      queryOptions.relationLoadStrategy = "join";
-    }
 
     const [countResult, itemsResult] = await Promise.all([
       db.listing.count({ where }),

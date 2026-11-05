@@ -155,9 +155,6 @@ export const GET = handler(async (req: NextRequest) => {
       },
     },
   };
-  if (isPg) {
-    bannerQueryOptions.relationLoadStrategy = "join";
-  }
 
   const banners = await db.carouselBanner.findMany(bannerQueryOptions);
 

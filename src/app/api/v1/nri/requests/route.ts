@@ -83,9 +83,6 @@ export const GET = handler(async (req: NextRequest) => {
         },
       },
     };
-    if (isPostgresDatabase()) {
-      singleQueryOptions.relationLoadStrategy = "join";
-    }
     const item = await db.nriPackageRequest.findUnique(singleQueryOptions);
     if (!item) return fail("Request not found", 404);
     return ok({ item });
@@ -153,9 +150,6 @@ export const GET = handler(async (req: NextRequest) => {
     orderBy: { createdAt: "desc" },
     take: limit,
   };
-  if (isPostgresDatabase()) {
-    listQueryOptions.relationLoadStrategy = "join";
-  }
   const items = await db.nriPackageRequest.findMany(listQueryOptions);
 
   return ok({ items, count: items.length });

@@ -40,9 +40,6 @@ export const GET = handler(async (_req: NextRequest, { params }: { params: Promi
       ghatReports: { orderBy: { createdAt: "desc" }, take: 10, include: { reporter: true } },
     },
   };
-  if (isPg) {
-    queryOptions.relationLoadStrategy = "join";
-  }
   const listing = await db.listing.findUnique(queryOptions);
   if (!listing) return fail("Listing not found", 404);
 

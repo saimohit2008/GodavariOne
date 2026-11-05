@@ -161,9 +161,6 @@ export const GET = handler(async (req: NextRequest) => {
       },
     },
   };
-  if (isPg) {
-    itemQueryOptions.relationLoadStrategy = "join";
-  }
 
   const [sections, items] = await Promise.all([
     db.homepageSection.findMany({

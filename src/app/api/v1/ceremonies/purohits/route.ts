@@ -125,9 +125,6 @@ export const GET = handler(async (req: NextRequest) => {
     },
     orderBy: { createdAt: "desc" },
   };
-  if (isPg) {
-    queryOptions.relationLoadStrategy = "join";
-  }
 
   const purohits: any[] = await db.purohitProfile.findMany(queryOptions);
 
