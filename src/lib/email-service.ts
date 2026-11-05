@@ -338,8 +338,14 @@ export async function processOutboxBatch(batchSize = 25): Promise<{ processed: n
 
   let sent = 0;
   let failed = 0;
+  const startTime = Date.now();
 
   for (const item of items) {
+    // Vercel Hobby execution timeout guard (yield if elapsed time exceeds 7.5 seconds)
+    if (Date.now() - startTime > 7500) {
+      console.warn("[EmailService] Batch processing approaching serverless timeout; yielding remaining items to next run");
+      break;
+    }
     const res = await dispatchNotification(item.id);
     if (res.success) sent++;
     else failed++;
