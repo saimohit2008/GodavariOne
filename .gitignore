@@ -149,3 +149,6 @@ mini-services/
 # Internal database maintenance and audit scripts
 /scripts/
 scripts/
+
+.vercel
+.env*
