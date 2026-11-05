@@ -109,3 +109,4 @@ Configure these variables in **Vercel Dashboard → Project Settings → Environ
    - Provide a `VERCEL_TOKEN` (or log in via `npx vercel login`).
    - Alternatively, import [`saimohit2008/GodavariOne`](https://github.com/saimohit2008/GodavariOne) in the Vercel Dashboard, paste the environment variables from Section 4, and click **Deploy**.
 3. **Live Verification**: Run automated production health check and smoke tests on the live `vercel.app` URL immediately upon deployment.
+
