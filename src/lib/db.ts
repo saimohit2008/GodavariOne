@@ -31,6 +31,14 @@ export function containsInsensitive(query: string): any {
 
 function getDatabaseUrl(): string {
   const envUrl = process.env.DATABASE_URL;
+  const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production";
+
+  if (isVercel && (!envUrl || envUrl.startsWith("file:"))) {
+    throw new Error(
+      "FATAL: Vercel cloud deployment requires a valid PostgreSQL DATABASE_URL. SQLite fallback is strictly prohibited in cloud production."
+    );
+  }
+
   if (envUrl) {
     if (envUrl.startsWith("file:")) {
       const rawPath = envUrl.slice(5);
