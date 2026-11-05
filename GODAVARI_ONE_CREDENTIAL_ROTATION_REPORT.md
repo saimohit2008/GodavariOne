@@ -149,3 +149,4 @@ To complete the rotation phase:
    - In Resend Dashboard (`https://resend.com/api-keys`), click **Create API Key** with **Sending access**.
 3. **Hold Old Key Revocation**:
    - Keep old keys until we test and confirm the replacements.
+
