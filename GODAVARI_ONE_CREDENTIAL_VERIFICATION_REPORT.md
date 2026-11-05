@@ -1,11 +1,11 @@
 # GODAVARI ONE — CREDENTIAL VERIFICATION & APPLICATION READINESS REPORT
 
-**Date & Time:** 2026-11-05T22:29:00+05:30  
+**Date & Time:** 2026-11-05T22:34:00+05:30  
 **Project:** Godavari One  
 **Repository:** `https://github.com/saimohit2008/GodavariOne`  
 **Branch:** `main`  
-**Execution Phase:** Phase 2 (Credential Configuration & Verification)  
-**Deployment State:** Awaiting Database Password Update in Local Connection Strings (Vercel Project Creation Held)  
+**Execution Phase:** Phase 2.1 (Final Database Connection Verification)  
+**Deployment State:** Awaiting Password Update in Local Connection Strings (Vercel Project Creation Held)  
 
 ---
 
@@ -15,73 +15,86 @@
 |:---|:---:|:---:|:---|
 | **Supabase Secret Key** (`godavari-one-production`) | Cloud Object Storage (`godavari-uploads`) | **PASS ✔** | Successfully authenticated with `sb_sec_...` key. Uploaded and cleanly removed temporary test image without touching existing files. |
 | **Resend API Key** (`Godavari One Production`) | Transactional Email Dispatch | **PASS ✔** | Successfully authenticated with `re_...` key. Dispatched real test email to authorized recipient `delivered@resend.dev` (Message ID: `01a1aca4-38e2-731a-8257-c4550820cbae`). |
-| **PostgreSQL Database Password** | Transaction Pooler (Port 6543) & Direct (Port 5432) | **PENDING OWNER PASSWORD UPDATE IN CONNECTION STRINGS** | The database password was reset in the Supabase Dashboard, but the local `.env` connection strings (`SUPABASE_DATABASE_URL` and `DIRECT_URL`) still hold the previous password. |
+| **PostgreSQL Pooler Reachability** | Port 6543 (`aws-1-eu-central-1.pooler.supabase.com`) | **PASS ✔** | TCP test succeeded (`TcpTestSucceeded: True`). Port 6543 online and accepting connections. |
+| **PostgreSQL Session Direct Reachability** | Port 5432 (`aws-1-eu-central-1.pooler.supabase.com`) | **PASS ✔** | TCP test succeeded (`TcpTestSucceeded: True`). Port 5432 online and accepting connections. |
+| **PostgreSQL Database Authentication** | PostgreSQL Password Verification | **BLOCKED (PASSWORD UPDATE REQUIRED IN .env)** | Authentication failed against PostgreSQL server because `.env` holds the previous password. |
 | **Application Typecheck** | Full Workspace (`npm run typecheck`) | **PASS ✔** | 0 TypeScript errors. |
 | **Automated Test Suite** | 59 Test Suites (`npm test`) | **PASS ✔** | 275 passed, 0 failed across all suites. |
 | **Production Build Engine** | Next.js Turbopack (`npm run build`) | **PASS ✔** | 66 routes compiled, optimized, and packaged with standalone assets. |
-| **Old Credential Revocation** | Previous Keys in Supabase & Resend | **READY FOR OWNER REVOCATION** | Both replacement keys verified operational. Awaiting owner confirmation before revoking old keys. |
 
 ---
 
-## 2. Supabase Cloud Storage Verification (PASS ✔)
+## 2. Environment Variable Resolution: `DATABASE_URL` vs `SUPABASE_DATABASE_URL`
 
-Using the newly configured Supabase Secret Key (`SUPABASE_SECRET_KEY` format `sb_sec_...`):
+Inspection of `prisma/schema.prisma`, `prisma/schema.postgresql.prisma`, and `src/lib/db.ts` confirms:
 
-1. **Authentication Probe**: Verified that `@supabase/supabase-js` correctly authorizes with Supabase Storage API (`/storage/v1/`).
-2. **Safe Test Upload**: Created a single non-colliding test image `test-verify-1793897803915.png` in the `godavari-uploads` bucket with valid PNG binary magic bytes.
-3. **MIME Enforcement Verified**: Supabase Storage successfully accepted the image and rejected non-image payloads, validating bucket MIME-type policies.
-4. **Immediate Cleanup**: The test object was immediately deleted via authenticated `DELETE` call. Zero existing files or private documents were touched.
-
----
-
-## 3. Resend Email Delivery Verification (PASS ✔)
-
-Using the newly configured Resend API Key (`RESEND_API_KEY` format `re_...`):
-
-1. **Permission Check**: Confirmed active sending authorization (`HTTP 422` on empty probe; authorization header accepted).
-2. **Controlled Delivery Test**: Dispatched a test verification message to the officially supported Resend testing recipient:
-   - **Recipient**: `delivered@resend.dev`
-   - **Sender**: `Godavari One <onboarding@resend.dev>`
-   - **Message ID**: `01a1aca4-38e2-731a-8257-c4550820cbae`
-   - **Status**: Successfully accepted and queued for delivery by Resend.
-
----
-
-## 4. PostgreSQL Database Connection Status (Action Required)
-
-When querying the Supabase PostgreSQL database using the connection strings currently stored in `.env`:
-- **Port 6543 (Transaction Pooler)**:
-  `Authentication failed against database server, the provided database credentials for postgres are not valid.`
-- **Reason**: The database password was rotated in the Supabase Dashboard as planned, but the new password has not yet been substituted into the connection strings in `.env`.
-- **Direct Connection Endpoint Note**:
-  In `.env`, `DIRECT_URL` currently points to `aws-1-eu-central-1.pooler.supabase.com:5432`. For direct session connections, Supabase provides a dedicated direct hostname (typically `db.[PROJECT_REF].supabase.co:5432`). Please ensure `DIRECT_URL` uses the exact direct connection string displayed in your Supabase Dashboard under **Project Settings → Database → Connection String → Direct**.
+1. **Application Runtime Variable**: Prisma and the application exclusively inspect `process.env.DATABASE_URL` and `process.env.DIRECT_URL`.
+   - `prisma/schema.postgresql.prisma`:
+     ```prisma
+     datasource db {
+       provider  = "postgresql"
+       url       = env("DATABASE_URL")
+       directUrl = env("DIRECT_URL")
+     }
+     ```
+   - `src/lib/db.ts`:
+     ```ts
+     function getDatabaseUrl(): string {
+       const envUrl = process.env.DATABASE_URL;
+       // ... validates postgresql:// connection
+     ```
+2. **`SUPABASE_DATABASE_URL` Purpose**:
+   - `SUPABASE_DATABASE_URL` is an auxiliary variable used only by local migration scripts (`scripts/database-migration.mjs`) to allow local developers to keep `DATABASE_URL="file:db/custom.db"` while migrating data to Supabase.
+3. **Resolution**:
+   - **For Local Environment (`.env`)**: Keep `DATABASE_URL="file:db/custom.db"` for local offline Next.js dev, and set `SUPABASE_DATABASE_URL` (pooler) and `DIRECT_URL` (direct) for running PostgreSQL audits and checks.
+   - **For Cloud Production (Vercel)**: Only configure **`DATABASE_URL`** (Port 6543 Transaction Pooler) and **`DIRECT_URL`** (Port 5432 Direct). Do **not** create an unused `SUPABASE_DATABASE_URL` in Vercel.
 
 ---
 
-## 5. Security & Repository Cleanliness
+## 3. Network & Hostname Verification for Supabase Endpoints
 
-1. **Git Exclusions**: Verified that `.env`, `.env.staging`, `.env.local`, SQLite databases, and private document directories are strictly excluded by `.gitignore`.
-2. **Git Commit History**: Scanned all commits; zero raw passwords, raw Supabase service keys, or raw Resend keys have been committed.
-3. **Frontend Bundles**: Verified that `.next/static` browser chunks contain zero database URLs, server secrets, or private API keys.
-4. **Clean Working Tree**: Only non-sensitive documentation and gitignore configuration are modified.
+Live network reachability tests (`Test-NetConnection`) yielded the following findings:
 
----
-
-## 6. Old Credential Revocation Recommendation
-
-Per strict production security guidelines:
-- **Supabase Old Key**: The replacement `godavari-one-production` secret key is verified and operational for storage operations. The previous exposed `service_role` key can now be safely revoked in the Supabase Dashboard.
-- **Resend Old Key**: The replacement `Godavari One Production` API key is verified and operational for email delivery. The previous exposed Resend API key can now be safely revoked in the Resend Dashboard.
+1. **Transaction Pooler Endpoint (Port 6543)**:
+   - **Host**: `aws-1-eu-central-1.pooler.supabase.com:6543`
+   - **TCP Test**: **SUCCEEDED** (`3.65.151.229:6543`)
+   - **Mode**: Transaction Pooling (PgBouncer)
+2. **Direct / Session Connection Endpoint (Port 5432)**:
+   - **Direct Host `db.hbqlcypgfiwofpmonylv.supabase.co`**: Name resolution failed on IPv4 networks (Supabase default for IPv6-first infrastructure).
+   - **Session Pooler Host `aws-1-eu-central-1.pooler.supabase.com:5432`**: **TCP Test SUCCEEDED** (`3.65.151.229:5432`).
+   - Supabase officially routes IPv4 direct/session connections through `aws-1-eu-central-1.pooler.supabase.com:5432`.
 
 ---
 
-## 7. Next Steps to Complete Verification
+## 4. Connection String Templates (No Secrets Exposed)
 
-1. **Update Connection Strings in `.env`**:
-   Replace the password in `.env` for:
-   - `SUPABASE_DATABASE_URL` (Port 6543 Transaction Pooler)
-   - `DIRECT_URL` (Port 5432 Direct Connection)
-2. **Execute Database Verification**:
-   Once updated, we will run the read-only check (`verifyPostgres`) to confirm record counts across `users`, `listings`, and `bookings` (guaranteeing zero data loss).
-3. **Proceed to Vercel**:
-   Once database connectivity is confirmed green, we will proceed to Phase 3 (Vercel Project Configuration & Deployment).
+To enable read-only database verification without pasting passwords into chat, update your local `.env` file with these exact templates:
+
+```env
+SUPABASE_DATABASE_URL="postgresql://postgres.hbqlcypgfiwofpmonylv:[YOUR_NEW_PASSWORD]@aws-1-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10&connect_timeout=30&pool_timeout=30"
+DIRECT_URL="postgresql://postgres.hbqlcypgfiwofpmonylv:[YOUR_NEW_PASSWORD]@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"
+```
+
+*(Replace `[YOUR_NEW_PASSWORD]` with your new Supabase database password in `.env`).*
+
+---
+
+## 5. Baseline Production Record Counts (Reference)
+
+For comparison once the PostgreSQL connection authenticates, baseline counts from `db/custom.db` are:
+
+| Table / Model | Baseline Count in `custom.db` | Supabase PostgreSQL Live Count | Status |
+|:---|:---:|:---:|:---:|
+| **Users** (`user`) | 25 | *Pending Authentication* | — |
+| **Listings** (`listing`) | 4 | *Pending Authentication* | — |
+| **Total Bookings** (`*Booking`) | 1 | *Pending Authentication* | — |
+
+---
+
+## 6. Current Status & Remaining Blocker
+
+- **Supabase Secret Key**: **PASS ✔** (Verified with upload and cleanup)
+- **Resend API Key**: **PASS ✔** (Verified with test delivery `01a1aca4-38e2-731a-8257-c4550820cbae`)
+- **Typecheck & Tests**: **PASS ✔** (0 errors, 275/275 tests passed)
+- **Production Build**: **PASS ✔** (66 routes compiled in Turbopack)
+- **Remaining Blocker**: Awaiting password update in local `.env` to execute read-only count verification.
