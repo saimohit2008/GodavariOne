@@ -44,10 +44,14 @@ db/
 *.db-wal
 *.db-shm
 *.sqlite
+*.sqlite3
+*.rdb
 *.backup
 *.auth-backup
 *.bak*
 *.dump
+*.sql.bak
+*.sql.gz
 /backups/
 backups/
 
@@ -113,6 +117,7 @@ GITHUB_RELEASE_READINESS_REPORT.md
 
 # Private internal reports and working notes
 GODAVARI_ONE_*.md
+!GODAVARI_ONE_SECURITY_AUDIT.md
 AGENTS.md
 OPEN-IN-ANTIGRAVITY.md
 worklog.md

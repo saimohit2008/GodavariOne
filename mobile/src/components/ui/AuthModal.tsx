@@ -14,13 +14,18 @@ import {
 import { useApp } from '../../context/app-context';
 import { Spacing, Shadows } from '../../constants/theme';
 import { AppIcon } from './AppIcon';
-import { loginWithPhone, registerWithPhone } from '../../services/api';
+import {
+  loginWithPhone,
+  registerWithPhone,
+  requestEmailOtp,
+  verifyEmailOtp,
+} from '../../services/api';
 
 export interface AuthModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  initialMode?: 'LOGIN' | 'REGISTER';
+  initialMode?: 'LOGIN' | 'EMAIL_OTP' | 'REGISTER';
 }
 
 export function AuthModal({
@@ -31,7 +36,7 @@ export function AuthModal({
 }: AuthModalProps) {
   const { lang, colors, isDark, t, setUser } = useApp();
 
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>(initialMode);
+  const [mode, setMode] = useState<'LOGIN' | 'EMAIL_OTP' | 'REGISTER'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -42,6 +47,8 @@ export function AuthModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
 
   const resetForm = () => {
     setName('');
@@ -49,6 +56,8 @@ export function AuthModal({
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+    setOtpCode('');
+    setOtpSent(false);
     setErrorMessage(null);
     setSuccessMessage(null);
   };
@@ -56,6 +65,71 @@ export function AuthModal({
   const handleClose = () => {
     resetForm();
     onClose();
+  };
+
+  const handleSendOtp = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage(
+        lang === 'te'
+          ? 'దయచేసి సరైన ఈమెయిల్ చిరునామాను నమోదు చేయండి'
+          : 'Please enter a valid email address'
+      );
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await requestEmailOtp(cleanEmail);
+      if (res.error) {
+        setErrorMessage(res.error);
+      } else {
+        setOtpSent(true);
+        setSuccessMessage(
+          lang === 'te'
+            ? 'ధృవీకరణ కోడ్ మీ ఈమెయిల్‌కు పంపబడింది'
+            : 'Verification code sent to your email'
+        );
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to send OTP code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = otpCode.trim();
+    if (!cleanCode || cleanCode.length < 4) {
+      setErrorMessage(
+        lang === 'te'
+          ? 'దయచేసి 6 అంకెల కోడ్‌ను నమోదు చేయండి'
+          : 'Please enter the verification code'
+      );
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await verifyEmailOtp(cleanEmail, cleanCode);
+      if (res.data) {
+        setUser(res.data);
+        setSuccessMessage(t('signInSuccessful'));
+        setTimeout(() => {
+          handleClose();
+          onSuccess?.();
+        }, 600);
+      } else {
+        setErrorMessage(res.error || 'Invalid verification code');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -203,6 +277,7 @@ export function AuthModal({
               onPress={() => {
                 setMode('LOGIN');
                 setErrorMessage(null);
+                setSuccessMessage(null);
               }}
               style={[
                 styles.tabButton,
@@ -222,8 +297,31 @@ export function AuthModal({
 
             <Pressable
               onPress={() => {
+                setMode('EMAIL_OTP');
+                setErrorMessage(null);
+                setSuccessMessage(null);
+              }}
+              style={[
+                styles.tabButton,
+                mode === 'EMAIL_OTP' && [styles.activeTab, { backgroundColor: colors.card }],
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: mode === 'EMAIL_OTP' ? colors.primary : colors.textSecondary },
+                  mode === 'EMAIL_OTP' && styles.activeTabText,
+                ]}
+              >
+                {lang === 'te' ? 'ఈమెయిల్ OTP' : 'Email OTP'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
                 setMode('REGISTER');
                 setErrorMessage(null);
+                setSuccessMessage(null);
               }}
               style={[
                 styles.tabButton,
@@ -269,109 +367,219 @@ export function AuthModal({
               </View>
             )}
 
-            {/* Registration-only fields */}
-            {mode === 'REGISTER' && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                  {t('fullName')}
-                </Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder={lang === 'te' ? 'ఉదా. రమేష్ కుమార్' : 'e.g. Ramesh Kumar'}
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
-                />
-              </View>
+            {/* EMAIL OTP FLOW */}
+            {mode === 'EMAIL_OTP' ? (
+              <>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                    {t('emailAddress')}
+                  </Text>
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="name@example.com"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    editable={!otpSent}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.secondary,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        opacity: otpSent ? 0.8 : 1,
+                      },
+                    ]}
+                  />
+                </View>
+
+                {otpSent ? (
+                  <>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                        {lang === 'te' ? '6-అంకెల ధృవీకరణ కోడ్' : '6-Digit Verification Code'}
+                      </Text>
+                      <TextInput
+                        value={otpCode}
+                        onChangeText={setOtpCode}
+                        placeholder="123456"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="number-pad"
+                        maxLength={8}
+                        style={[
+                          styles.input,
+                          {
+                            backgroundColor: colors.secondary,
+                            color: colors.text,
+                            borderColor: colors.border,
+                            letterSpacing: 4,
+                            fontWeight: '700',
+                            textAlign: 'center',
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <Pressable
+                      onPress={handleVerifyOtp}
+                      disabled={loading}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.submitButton,
+                        { backgroundColor: colors.primary },
+                        pressed && { opacity: 0.85 },
+                        loading && { opacity: 0.6 },
+                      ]}
+                    >
+                      {loading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.submitButtonText}>
+                          {lang === 'te' ? 'కోడ్ ధృవీకరించండి & లాగిన్' : 'Verify Code & Sign In'}
+                        </Text>
+                      )}
+                    </Pressable>
+
+                    <Pressable
+                      onPress={handleSendOtp}
+                      disabled={loading}
+                      style={styles.resendBtn}
+                    >
+                      <Text style={[styles.resendBtnText, { color: colors.primary }]}>
+                        {lang === 'te' ? 'మళ్లీ కోడ్ పంపండి' : 'Resend Code'}
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable
+                    onPress={handleSendOtp}
+                    disabled={loading}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.submitButton,
+                      { backgroundColor: colors.primary },
+                      pressed && { opacity: 0.85 },
+                      loading && { opacity: 0.6 },
+                    ]}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.submitButtonText}>
+                        {lang === 'te' ? 'OTP కోడ్ పంపండి' : 'Send Verification Code'}
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Registration-only fields */}
+                {mode === 'REGISTER' && (
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                      {t('fullName')}
+                    </Text>
+                    <TextInput
+                      value={name}
+                      onChangeText={setName}
+                      placeholder={lang === 'te' ? 'ఉదా. రమేష్ కుమార్' : 'e.g. Ramesh Kumar'}
+                      placeholderTextColor={colors.textMuted}
+                      style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                )}
+
+                {/* Mobile number */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                    {t('phoneNumber')}
+                  </Text>
+                  <TextInput
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder={lang === 'te' ? '10 అంకెల మొబైల్ సంఖ్య' : '9876543210'}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="phone-pad"
+                    maxLength={13}
+                    style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
+                  />
+                </View>
+
+                {/* Email (Optional in Registration) */}
+                {mode === 'REGISTER' && (
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                      {t('emailAddress')}
+                    </Text>
+                    <TextInput
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="name@example.com"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                )}
+
+                {/* Password */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                    {t('password')}
+                  </Text>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry
+                    style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
+                  />
+                </View>
+
+                {/* Confirm Password (Registration only) */}
+                {mode === 'REGISTER' && (
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                      {t('confirmPassword')}
+                    </Text>
+                    <TextInput
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="••••••••"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry
+                      style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                )}
+
+                {/* Submit Button */}
+                <Pressable
+                  onPress={handleSubmit}
+                  disabled={loading}
+                  accessibilityRole="button"
+                  accessibilityLabel={mode === 'LOGIN' ? 'Log in' : 'Create account'}
+                  style={({ pressed }) => [
+                    styles.submitButton,
+                    { backgroundColor: colors.primary },
+                    pressed && { opacity: 0.85 },
+                    loading && { opacity: 0.6 },
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>
+                      {mode === 'LOGIN' ? t('signIn') : t('register')}
+                    </Text>
+                  )}
+                </Pressable>
+              </>
             )}
-
-            {/* Mobile number */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                {t('phoneNumber')}
-              </Text>
-              <TextInput
-                value={phone}
-                onChangeText={setPhone}
-                placeholder={lang === 'te' ? '10 అంకెల మొబైల్ సంఖ్య' : '9876543210'}
-                placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-                maxLength={13}
-                style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
-              />
-            </View>
-
-            {/* Email (Optional in Registration) */}
-            {mode === 'REGISTER' && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                  {t('emailAddress')}
-                </Text>
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="name@example.com"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
-                />
-              </View>
-            )}
-
-            {/* Password */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                {t('password')}
-              </Text>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
-              />
-            </View>
-
-            {/* Confirm Password (Registration only) */}
-            {mode === 'REGISTER' && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                  {t('confirmPassword')}
-                </Text>
-                <TextInput
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry
-                  style={[styles.input, { backgroundColor: colors.secondary, color: colors.text, borderColor: colors.border }]}
-                />
-              </View>
-            )}
-
-            {/* Submit Button */}
-            <Pressable
-              onPress={handleSubmit}
-              disabled={loading}
-              accessibilityRole="button"
-              accessibilityLabel={mode === 'LOGIN' ? 'Log in' : 'Create account'}
-              style={({ pressed }) => [
-                styles.submitButton,
-                { backgroundColor: colors.primary },
-                pressed && { opacity: 0.85 },
-                loading && { opacity: 0.6 },
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  {mode === 'LOGIN' ? t('signIn') : t('register')}
-                </Text>
-              )}
-            </Pressable>
 
             {/* Privacy notice */}
             <Text style={[styles.footerNotice, { color: colors.textMuted }]}>
@@ -512,6 +720,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+  },
+  resendBtn: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resendBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   footerNotice: {
     fontSize: 10,

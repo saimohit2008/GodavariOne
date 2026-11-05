@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import net from "net";
 import { z } from "zod";
 import type { ZodError } from "zod";
 import { calculateTimingStatus } from "./timing";
@@ -43,7 +44,11 @@ export function handler<T extends (...args: never[]) => Promise<unknown>>(fn: T)
       }
        
       console.error("[api error]", e);
-      const msg = e instanceof Error ? e.message : "Internal server error";
+      const isProd =
+        process.env.NODE_ENV === "production" ||
+        process.env.VERCEL === "1" ||
+        process.env.VERCEL_ENV === "production";
+      const msg = isProd ? "Internal server error" : (e instanceof Error ? e.message : "Internal server error");
       return fail(msg, 500);
     }
   }) as T;
@@ -613,7 +618,22 @@ export function safeJson(v: unknown): any {
 }
 
 export function getClientIp(req: Request): string | undefined {
+  if ((req as any).ip && typeof (req as any).ip === "string" && net.isIP((req as any).ip)) {
+    return (req as any).ip;
+  }
+  const headerKeys = ["x-real-ip", "x-vercel-ip", "cf-connecting-ip"];
+  for (const key of headerKeys) {
+    const val = req.headers.get(key)?.trim();
+    if (val && net.isIP(val)) {
+      return val;
+    }
+  }
   const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
+  if (fwd) {
+    const candidate = fwd.split(",")[0].trim();
+    if (net.isIP(candidate)) {
+      return candidate;
+    }
+  }
   return undefined;
 }

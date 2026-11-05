@@ -57,6 +57,15 @@ export default function CategoryScreen() {
     category: categoryId,
   });
 
+  useEffect(() => {
+    if (categoryId && CATEGORY_META[categoryId]) {
+      setFilters((prev) => ({
+        ...prev,
+        category: categoryId,
+      }));
+    }
+  }, [categoryId]);
+
   // Debounced search query
   const debouncedSearch = useDebounce(search, 300);
 
@@ -85,6 +94,8 @@ export default function CategoryScreen() {
       : categoryMeta.description
     : '';
 
+  const { town, accessibility, crowdStatus, foodType, transportType, sortBy, sortOrder, verifiedOnly } = filters;
+
   const loadData = useCallback(async () => {
     if (!categoryId || !CATEGORY_META[categoryId]) {
       setLoading(false);
@@ -92,18 +103,19 @@ export default function CategoryScreen() {
       return;
     }
     setError(null);
+    setLoading(true);
     try {
       const res = await getListings({
         category: categoryId,
         q: debouncedSearch.trim() || undefined,
-        town: filters.town || undefined,
-        accessibility: filters.accessibility ? true : undefined,
-        crowdStatus: filters.crowdStatus && filters.crowdStatus !== 'ALL' ? filters.crowdStatus : undefined,
-        foodType: filters.foodType && filters.foodType !== 'ALL' ? filters.foodType : undefined,
-        transportType: filters.transportType && filters.transportType !== 'ALL' ? filters.transportType : undefined,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-        verifiedOnly: filters.verifiedOnly,
+        town: town || undefined,
+        accessibility: accessibility ? true : undefined,
+        crowdStatus: crowdStatus && crowdStatus !== 'ALL' ? crowdStatus : undefined,
+        foodType: foodType && foodType !== 'ALL' ? foodType : undefined,
+        transportType: transportType && transportType !== 'ALL' ? transportType : undefined,
+        sortBy,
+        sortOrder,
+        verifiedOnly,
       });
       setListings(res.data);
       setIsLive(res.isLive);
@@ -116,10 +128,20 @@ export default function CategoryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [categoryId, debouncedSearch, filters]);
+  }, [
+    categoryId,
+    debouncedSearch,
+    town,
+    accessibility,
+    crowdStatus,
+    foodType,
+    transportType,
+    sortBy,
+    sortOrder,
+    verifiedOnly,
+  ]);
 
   useEffect(() => {
-    setLoading(true);
     loadData();
   }, [loadData]);
 
@@ -373,6 +395,13 @@ export default function CategoryScreen() {
               {t('loading')}
             </Text>
           </View>
+        ) : error && listings.length === 0 ? (
+          <EmptyState
+            title={lang === 'te' ? 'జాబితాలు లోడ్ కాలేదు' : 'Unable to Load Listings'}
+            message={error}
+            actionLabel={lang === 'te' ? 'మళ్లీ ప్రయత్నించండి' : 'Retry'}
+            onAction={loadData}
+          />
         ) : listings.length === 0 ? (
           <EmptyState
             title={

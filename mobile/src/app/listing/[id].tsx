@@ -22,10 +22,13 @@ import { getListingById, resolveImageUrl } from '@/services/api';
 import { getOptimizedImageSource } from '@/services/image-assets';
 import { ListingItem } from '@/types';
 import { isFavorite, toggleFavorite } from '@/lib/storage';
+import { openMapsDirections } from '@/lib/maps';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CrowdBadge } from '@/components/ui/CrowdBadge';
+import { HotelBookingModal } from '@/components/ui/HotelBookingModal';
+import { RestaurantBookingModal } from '@/components/ui/RestaurantBookingModal';
 
 const CROWD_CONFIG: Record<string, { bg: string; text: string; border: string; label: string; teLabel: string }> = {
   FREE: { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0', label: 'Low Crowd / Safe', teLabel: 'తక్కువ రద్దీ / అనుకూలం' },
@@ -50,6 +53,8 @@ export default function ListingDetailScreen() {
   const [fav, setFav] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [hotelModalVisible, setHotelModalVisible] = useState(false);
+  const [restaurantModalVisible, setRestaurantModalVisible] = useState(false);
 
   const rawId = Array.isArray(id) ? id[0] : id;
 
@@ -110,19 +115,13 @@ export default function ListingDetailScreen() {
 
   const handleDirections = () => {
     if (!listing) return;
-    const dest = listing.latitude && listing.longitude
-      ? `${listing.latitude},${listing.longitude}`
-      : encodeURIComponent(`${listing.name}, ${listing.address}, Rajahmundry`);
-
-    let url = `https://www.google.com/maps/search/?api=1&query=${dest}`;
-    if (Platform.OS === 'android') {
-      url = `geo:0,0?q=${dest}`;
-    } else if (Platform.OS === 'ios') {
-      url = `maps:?q=${dest}`;
-    }
-
-    Linking.openURL(url).catch(() => {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${dest}`);
+    openMapsDirections({
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      name: listing.name,
+      address: listing.address,
+      town: listing.town,
+      district: listing.district,
     });
   };
 
@@ -394,19 +393,62 @@ export default function ListingDetailScreen() {
 
           {/* Primary Quick Actions Bar */}
           <View style={styles.quickActionsBar}>
-            {listing.phone && (
+            {listing.category === 'HOTEL' && (
               <Pressable
-                onPress={handleCall}
+                onPress={() => setHotelModalVisible(true)}
                 style={({ pressed }) => [
                   styles.primaryActionButton,
                   { backgroundColor: colors.primary },
                   pressed && { opacity: 0.85 },
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel="Book a Room"
+              >
+                <AppIcon name={{ ios: 'bed.double.fill', android: 'hotel', web: 'bed' }} size={16} color="#FFFFFF" />
+                <Text style={styles.primaryActionText}>{lang === 'te' ? 'గది బుక్ చేయండి' : 'Book Room'}</Text>
+              </Pressable>
+            )}
+
+            {listing.category === 'RESTAURANT' && (
+              <Pressable
+                onPress={() => setRestaurantModalVisible(true)}
+                style={({ pressed }) => [
+                  styles.primaryActionButton,
+                  { backgroundColor: colors.primary },
+                  pressed && { opacity: 0.85 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Reserve a Table"
+              >
+                <AppIcon name={{ ios: 'fork.knife', android: 'restaurant', web: 'cutlery' }} size={16} color="#FFFFFF" />
+                <Text style={styles.primaryActionText}>{lang === 'te' ? 'టేబుల్ బుక్ చేయండి' : 'Reserve Table'}</Text>
+              </Pressable>
+            )}
+
+            {listing.phone && (
+              <Pressable
+                onPress={handleCall}
+                style={({ pressed }) => [
+                  styles.primaryActionButton,
+                  { backgroundColor: (listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.secondary : colors.primary },
+                  pressed && { opacity: 0.85 },
+                ]}
+                accessibilityRole="button"
                 accessibilityLabel="Call"
               >
-                <AppIcon name={{ ios: 'phone.fill', android: 'call', web: 'phone' }} size={16} color="#FFFFFF" />
-                <Text style={styles.primaryActionText}>{t('call')}</Text>
+                <AppIcon
+                  name={{ ios: 'phone.fill', android: 'call', web: 'phone' }}
+                  size={16}
+                  color={(listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.primary : '#FFFFFF'}
+                />
+                <Text
+                  style={[
+                    styles.primaryActionText,
+                    { color: (listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.primary : '#FFFFFF' },
+                  ]}
+                >
+                  {t('call')}
+                </Text>
               </Pressable>
             )}
 
@@ -414,7 +456,7 @@ export default function ListingDetailScreen() {
               onPress={handleDirections}
               style={({ pressed }) => [
                 styles.primaryActionButton,
-                { backgroundColor: listing.phone ? colors.secondary : colors.primary },
+                { backgroundColor: (listing.phone || listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.secondary : colors.primary },
                 pressed && { opacity: 0.85 },
               ]}
               accessibilityRole="button"
@@ -423,12 +465,12 @@ export default function ListingDetailScreen() {
               <AppIcon
                 name={{ ios: 'arrow.triangle.turn.up.right.circle.fill', android: 'directions', web: 'directions' }}
                 size={16}
-                color={listing.phone ? colors.primary : '#FFFFFF'}
+                color={(listing.phone || listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.primary : '#FFFFFF'}
               />
               <Text
                 style={[
                   styles.primaryActionText,
-                  { color: listing.phone ? colors.primary : '#FFFFFF' },
+                  { color: (listing.phone || listing.category === 'HOTEL' || listing.category === 'RESTAURANT') ? colors.primary : '#FFFFFF' },
                 ]}
               >
                 {t('directions')}
@@ -525,6 +567,31 @@ export default function ListingDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* Direct Room Booking Button */}
+            <Pressable
+              onPress={() => setHotelModalVisible(true)}
+              style={({ pressed }) => [
+                styles.bookingActionCta,
+                { backgroundColor: colors.primary },
+                pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Book Room"
+            >
+              <View style={styles.bookingIconBox}>
+                <AppIcon name={{ ios: 'bed.double.fill', android: 'hotel', web: 'bed' }} size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.bookingActionTextCol}>
+                <Text style={styles.bookingActionTitle}>
+                  {lang === 'te' ? 'గదిని ఇప్పుడే బుక్ చేసుకోండి' : 'Reserve Room in Advance'}
+                </Text>
+                <Text style={styles.bookingActionSub}>
+                  {lang === 'te' ? 'పుష్కరాల రద్దీ దృష్ట్యా మీ బసను ధృవీకరించుకోండి' : 'Instant confirmation for Pushkaralu 2027'}
+                </Text>
+              </View>
+              <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron-right' }} size={16} color="#FFFFFF" />
+            </Pressable>
           </View>
         )}
 
@@ -553,6 +620,31 @@ export default function ListingDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* Direct Table Reservation Button */}
+            <Pressable
+              onPress={() => setRestaurantModalVisible(true)}
+              style={({ pressed }) => [
+                styles.bookingActionCta,
+                { backgroundColor: colors.primary },
+                pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Reserve Table"
+            >
+              <View style={styles.bookingIconBox}>
+                <AppIcon name={{ ios: 'fork.knife', android: 'restaurant', web: 'cutlery' }} size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.bookingActionTextCol}>
+                <Text style={styles.bookingActionTitle}>
+                  {lang === 'te' ? 'టేబుల్ ఇప్పుడే బుక్ చేయండి' : 'Reserve Dining Table'}
+                </Text>
+                <Text style={styles.bookingActionSub}>
+                  {lang === 'te' ? 'రద్దీ లేని ప్రశాంత భోజన అనుభవం కోసం' : 'Skip the queue with confirmed table booking'}
+                </Text>
+              </View>
+              <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron-right' }} size={16} color="#FFFFFF" />
+            </Pressable>
           </View>
         )}
 
@@ -573,6 +665,31 @@ export default function ListingDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* Free Stay Pass CTA */}
+            <Pressable
+              onPress={() => router.push('/bookings')}
+              style={({ pressed }) => [
+                styles.bookingActionCta,
+                { backgroundColor: '#059669' },
+                pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="View Pilgrim Accommodations"
+            >
+              <View style={styles.bookingIconBox}>
+                <AppIcon name={{ ios: 'house.fill', android: 'holiday_village', web: 'home' }} size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.bookingActionTextCol}>
+                <Text style={styles.bookingActionTitle}>
+                  {lang === 'te' ? 'ఉచిత వసతి & యాత్రికుల నివాసం' : 'Pilgrim Free Stay Seva'}
+                </Text>
+                <Text style={styles.bookingActionSub}>
+                  {lang === 'te' ? 'పుష్కర యాత్రికులకు ఉచిత బస సమాచారం & బుకింగ్స్' : 'Explore free pilgrim sheds and stay passes'}
+                </Text>
+              </View>
+              <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron-right' }} size={16} color="#FFFFFF" />
+            </Pressable>
           </View>
         )}
 
@@ -683,6 +800,28 @@ export default function ListingDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Hotel Reservation Modal */}
+      <HotelBookingModal
+        visible={hotelModalVisible}
+        onClose={() => setHotelModalVisible(false)}
+        listing={listing}
+        onSuccess={() => {
+          setHotelModalVisible(false);
+          router.push('/bookings');
+        }}
+      />
+
+      {/* Restaurant Reservation Modal */}
+      <RestaurantBookingModal
+        visible={restaurantModalVisible}
+        onClose={() => setRestaurantModalVisible(false)}
+        listing={listing}
+        onSuccess={() => {
+          setRestaurantModalVisible(false);
+          router.push('/bookings');
+        }}
+      />
     </View>
   );
 }
@@ -853,11 +992,13 @@ const styles = StyleSheet.create({
   },
   quickActionsBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: Spacing.one,
   },
   primaryActionButton: {
     flex: 1,
+    minWidth: 140,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1041,5 +1182,35 @@ const styles = StyleSheet.create({
     color: '#065F46',
     fontSize: 12,
     fontWeight: '600',
+  },
+  bookingActionCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 14,
+    padding: Spacing.three,
+    marginTop: 8,
+  },
+  bookingIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingActionTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  bookingActionTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  bookingActionSub: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 11,
+    lineHeight: 15,
   },
 });

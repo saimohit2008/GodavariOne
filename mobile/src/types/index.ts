@@ -129,7 +129,14 @@ export interface PriorityBookingItem {
   id: string;
   applicationNumber: string;
   category: 'SENIOR_CITIZEN' | 'PERSON_WITH_DISABILITY';
-  status: 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED' | 'CHECKED_IN' | 'CANCELLED' | 'SLOT_ASSIGNED';
+  status:
+  | 'SUBMITTED'
+  | 'PENDING_REVIEW'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'CHECKED_IN'
+  | 'CANCELLED'
+  | 'SLOT_ASSIGNED';
   beneficiaryName: string;
   beneficiaryDob?: string | null;
   beneficiaryPhone: string;
@@ -159,4 +166,81 @@ export interface PriorityBookingItem {
     accessibilityNotes?: string | null;
   } | null;
 }
+
+export interface HotelBookingItem {
+  id: string;
+  listingId: string;
+  listing?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    town?: string | null;
+    district?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+  roomId?: string | null;
+  room?: {
+    id: string;
+    name: string;
+    roomIdentifier?: string | null;
+    basePrice?: number | null;
+    maxGuests?: number | null;
+  } | null;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  rooms: number;
+  adults?: number | null;
+  children?: number | null;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REJECTED' | 'COMPLETED';
+  totalAmount?: number | null;
+  specialRequest?: string | null;
+  createdAt: string;
+}
+
+export interface RestaurantBookingItem {
+  id: string;
+  listingId: string;
+  listing?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    town?: string | null;
+    district?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+  bookingDate: string;
+  timeSlot: string;
+  peopleCount: number;
+  status: 'PENDING' | 'APPROVED' | 'CANCELLED' | 'REJECTED' | 'COMPLETED';
+  specialRequest?: string | null;
+  rejectionReason?: string | null;
+  createdAt: string;
+}
+
+export interface AccommodationBookingItem {
+  id: string;
+  listingId: string;
+  listing?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    town?: string | null;
+    district?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
+  checkInDate: string;
+  checkOutDate: string;
+  peopleCount: number;
+  groupType: 'FAMILY' | 'MEN' | 'WOMEN' | 'MIXED';
+  guestName: string;
+  guestPhone: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REJECTED' | 'COMPLETED';
+  specialNotes?: string | null;
+  createdAt: string;
+}
+
 

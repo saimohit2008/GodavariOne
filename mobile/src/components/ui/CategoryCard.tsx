@@ -85,10 +85,12 @@ export function CategoryCard({
 
 const styles = StyleSheet.create({
   gridContainer: {
-    flex: 1,
-    minWidth: 100,
+    width: '31.3%',
+    minWidth: 95,
+    maxWidth: '32.5%',
+    flexGrow: 1,
     paddingVertical: 14,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     borderRadius: 16,
     borderWidth: 1.5,
     alignItems: 'center',

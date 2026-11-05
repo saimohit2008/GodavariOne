@@ -349,6 +349,102 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* 6B. Priority Ghat Pass Booking Banner */}
+        <View
+          style={[
+            styles.priorityPassBox,
+            {
+              backgroundColor: isDark ? '#182838' : '#EFF6FF',
+              borderColor: isDark ? '#26425A' : '#BFDBFE',
+            },
+            Shadows.card,
+          ]}
+        >
+          <View style={styles.priorityPassHeader}>
+            <View style={[styles.priorityBadgeIcon, { backgroundColor: '#2563EB' }]}>
+              <AppIcon
+                name={{ ios: 'ticket.fill', android: 'confirmation_number', web: 'ticket-alt' }}
+                size={16}
+                color="#FFFFFF"
+              />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <View style={styles.priorityTitleRow}>
+                <Text style={[styles.priorityTitle, { color: isDark ? '#93C5FD' : '#1E40AF' }]}>
+                  {lang === 'te' ? 'ప్రాధాన్యత ఘాట్ దర్శన పాస్' : 'Priority Ghat Pass & Digital Passes'}
+                </Text>
+                <View style={[styles.freeTagBadgeContainer, { backgroundColor: isDark ? '#1E3A8A' : '#DBEAFE' }]}>
+                  <Text style={[styles.freeTagBadgeText, { color: '#1D4ED8' }]}>
+                    {lang === 'te' ? 'ఉచిత సేవ' : 'Free Pass'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.prioritySubtitle, { color: colors.textSecondary }]}>
+                {lang === 'te'
+                  ? 'సీనియర్ సిటిజన్లు (65+), దివ్యాంగులు మరియు గర్భిణీ స్త్రీలకు ఉచిత ఫాస్ట్-ట్రాక్ దర్శన పాస్.'
+                  : 'Fast-track bathing entry for senior citizens (65+), differently abled pilgrims, and assisted families.'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Quick Features Row */}
+          <View style={styles.priorityFeaturesRow}>
+            <View style={[styles.priorityFeaturePill, { backgroundColor: colors.card }]}>
+              <Text style={[styles.priorityFeatureText, { color: colors.text }]}>
+                ♿ {lang === 'te' ? 'వీల్‌చైర్ సహాయం' : 'Wheelchair Assist'}
+              </Text>
+            </View>
+            <View style={[styles.priorityFeaturePill, { backgroundColor: colors.card }]}>
+              <Text style={[styles.priorityFeatureText, { color: colors.text }]}>
+                👴 {lang === 'te' ? 'వృద్ధుల లైన్' : 'Senior 65+ Line'}
+              </Text>
+            </View>
+            <View style={[styles.priorityFeaturePill, { backgroundColor: colors.card }]}>
+              <Text style={[styles.priorityFeatureText, { color: colors.text }]}>
+                🎫 {lang === 'te' ? 'క్యూఆర్ పాస్' : 'QR Entry Pass'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Actions Row */}
+          <View style={styles.priorityActionsRow}>
+            <Pressable
+              onPress={() => router.push({ pathname: '/bookings', params: { apply: 'true' } } as any)}
+              style={({ pressed }) => [
+                styles.priorityPrimaryBtn,
+                { backgroundColor: '#2563EB' },
+                pressed && { opacity: 0.85 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Apply for priority pass"
+            >
+              <AppIcon
+                name={{ ios: 'plus.circle.fill', android: 'add_circle', web: 'plus-circle' }}
+                size={14}
+                color="#FFFFFF"
+              />
+              <Text style={styles.priorityPrimaryBtnText}>
+                {lang === 'te' ? 'పాస్ కోసం దరఖాస్తు' : 'Apply for Priority Pass'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push('/bookings')}
+              style={({ pressed }) => [
+                styles.prioritySecondaryBtn,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="View my digital passes"
+            >
+              <Text style={[styles.prioritySecondaryBtnText, { color: colors.primary }]}>
+                {lang === 'te' ? 'నా పాస్‌లు' : 'My Passes'} →
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* 7. Ghat Crowd Status Preview */}
         <View style={styles.sectionWrapper}>
           <SectionHeading
@@ -567,6 +663,94 @@ const styles = StyleSheet.create({
   listingGridItem: {
     flex: 1,
     minWidth: 300,
+  },
+  priorityPassBox: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: Spacing.four,
+    marginBottom: Spacing.four,
+    gap: Spacing.three,
+  },
+  priorityPassHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two + 2,
+  },
+  priorityBadgeIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  priorityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  priorityTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    flex: 1,
+  },
+  freeTagBadgeContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+  },
+  freeTagBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  prioritySubtitle: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  priorityFeaturesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  priorityFeaturePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  priorityFeatureText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+  },
+  priorityActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: 2,
+  },
+  priorityPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  priorityPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  prioritySecondaryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  prioritySecondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   freeServicesBox: {
     borderRadius: 18,

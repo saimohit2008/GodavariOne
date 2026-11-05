@@ -87,20 +87,22 @@ export default function ExploreScreen() {
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
 
+  const { category, town, accessibility, crowdStatus, foodType, transportType, sortBy, sortOrder, verifiedOnly } = filters;
+
   const loadListings = useCallback(async () => {
     setLoading(true);
     try {
       const apiParams: GetListingsParams = {
-        category: filters.category || undefined,
+        category: category || undefined,
         q: debouncedQuery.trim() || undefined,
-        town: filters.town || undefined,
-        accessibility: filters.accessibility ? true : undefined,
-        crowdStatus: filters.crowdStatus && filters.crowdStatus !== 'ALL' ? filters.crowdStatus : undefined,
-        foodType: filters.foodType && filters.foodType !== 'ALL' ? filters.foodType : undefined,
-        transportType: filters.transportType && filters.transportType !== 'ALL' ? filters.transportType : undefined,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-        verifiedOnly: filters.verifiedOnly,
+        town: town || undefined,
+        accessibility: accessibility ? true : undefined,
+        crowdStatus: crowdStatus && crowdStatus !== 'ALL' ? crowdStatus : undefined,
+        foodType: foodType && foodType !== 'ALL' ? foodType : undefined,
+        transportType: transportType && transportType !== 'ALL' ? transportType : undefined,
+        sortBy,
+        sortOrder,
+        verifiedOnly,
       };
 
       const res = await getListings(apiParams);
@@ -112,7 +114,18 @@ export default function ExploreScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filters, debouncedQuery]);
+  }, [
+    category,
+    town,
+    accessibility,
+    crowdStatus,
+    foodType,
+    transportType,
+    sortBy,
+    sortOrder,
+    verifiedOnly,
+    debouncedQuery,
+  ]);
 
   useEffect(() => {
     loadListings();

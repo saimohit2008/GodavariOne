@@ -322,6 +322,21 @@ export default function GhatsScreen() {
                 ? 'ప్రత్యక్ష సర్వర్ లేదా నెట్‌వర్క్ అందుబాటులో లేదు. క్రింద చూపిన రద్దీ స్థాయిలు గత నిల్వ నుండి వచ్చినవి, ప్రస్తుత నదీ తీర పరిస్థితిని సూచించవు.'
                 : 'Live backend disconnected. The crowd statuses displayed below are cached snapshots and do not represent real-time riverbank conditions. Follow on-site personnel instructions.'}
             </Text>
+            <Pressable
+              onPress={loadGhats}
+              style={({ pressed }) => [
+                styles.offlineRetryBtn,
+                { backgroundColor: isDark ? '#78350F' : '#FDE68A' },
+                pressed && { opacity: 0.75 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Retry live connection"
+            >
+              <AppIcon name={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }} size={13} color={isDark ? '#FDE68A' : '#92400E'} />
+              <Text style={[styles.offlineRetryText, { color: isDark ? '#FDE68A' : '#92400E' }]}>
+                {lang === 'te' ? 'ప్రత్యక్ష కనెక్షన్ మళ్లీ ప్రయత్నించండి' : 'Retry Live Connection'}
+              </Text>
+            </Pressable>
           </View>
         )}
 
@@ -551,6 +566,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     fontWeight: '500',
+  },
+  offlineRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  offlineRetryText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   advisoryCard: {
     borderRadius: 14,

@@ -139,9 +139,13 @@ export async function createSession(userId: string, authMethod: "PASSWORD" | "OT
 export async function setSessionCookie(token: string) {
   try {
     const store = await cookies();
+    const isProd =
+      process.env.NODE_ENV === "production" ||
+      process.env.VERCEL === "1" ||
+      process.env.VERCEL_ENV === "production";
     store.set(SESSION_COOKIE, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isProd,
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_TTL_MS / 1000,

@@ -185,6 +185,32 @@ export function GhatStatusCard({ ghat, onPress, isOffline = false }: GhatStatusC
         </Pressable>
 
         <Pressable
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            router.push({
+              pathname: '/bookings',
+              params: { apply: 'true', ghatId: ghat.id, ghatName: ghat.name },
+            } as any);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Book Priority Pass for this ghat"
+          style={({ pressed }) => [
+            styles.actionButton,
+            { backgroundColor: isDark ? '#3D2C10' : '#FEF3C7', borderColor: isDark ? '#6B4A1B' : '#FDE68A', borderWidth: 1 },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <AppIcon
+            name={{ ios: 'ticket.fill', android: 'confirmation_number', web: 'ticket-alt' }}
+            size={13}
+            color="#D97706"
+          />
+          <Text style={[styles.actionButtonText, { color: isDark ? '#FBBF24' : '#B45309' }]}>
+            {lang === 'te' ? 'పాస్ బుక్' : 'Book Pass'}
+          </Text>
+        </Pressable>
+
+        <Pressable
           onPress={handleCardPress}
           accessibilityRole="button"
           accessibilityLabel="View ghat details"
@@ -282,6 +308,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: 8,
     paddingTop: 8,
     marginTop: 4,
@@ -290,13 +317,17 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 8,
+    minHeight: 30,
+    flexShrink: 1,
   },
   actionButtonText: {
     fontSize: 11,
     fontWeight: '700',
+    flexShrink: 1,
   },
 });

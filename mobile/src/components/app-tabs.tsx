@@ -1,5 +1,8 @@
-import { NativeTabs } from 'expo-router/native-tabs';
+import React from 'react';
+import { Image, StyleSheet, Platform } from 'react-native';
+import { Tabs } from 'expo-router';
 import { useApp } from '@/context/app-context';
+
 import homeIcon from '@/assets/images/tabIcons/home.png';
 import exploreIcon from '@/assets/images/tabIcons/explore.png';
 import ghatsIcon from '@/assets/images/tabIcons/ghats.png';
@@ -7,39 +10,123 @@ import bookingsIcon from '@/assets/images/tabIcons/bookings.png';
 import profileIcon from '@/assets/images/tabIcons/profile.png';
 
 export default function AppTabs() {
-  const { colors } = useApp();
+  const { colors, t } = useApp();
 
   return (
-    <NativeTabs
-      backgroundColor={colors.card}
-      indicatorColor={colors.secondary}
-      tintColor={colors.primary}
-      labelStyle={{ selected: { color: colors.primary } }}
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          height: Platform.OS === 'ios' ? 86 : 62,
+          paddingBottom: Platform.OS === 'ios' ? 26 : 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+      }}
     >
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon src={homeIcon} renderingMode="template" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: t('home') || 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              alt="Home tab"
+              source={homeIcon}
+              style={[
+                styles.icon,
+                { tintColor: color, opacity: focused ? 1 : 0.8 },
+              ]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon src={exploreIcon} renderingMode="template" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: t('explore') || 'Explore',
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              alt="Explore tab"
+              source={exploreIcon}
+              style={[
+                styles.icon,
+                { tintColor: color, opacity: focused ? 1 : 0.8 },
+              ]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="ghats">
-        <NativeTabs.Trigger.Label>Ghats</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon src={ghatsIcon} renderingMode="template" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="ghats"
+        options={{
+          title: t('ghats') || 'Ghats',
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              alt="Ghats tab"
+              source={ghatsIcon}
+              style={[
+                styles.icon,
+                { tintColor: color, opacity: focused ? 1 : 0.8 },
+              ]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="bookings">
-        <NativeTabs.Trigger.Label>Bookings</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon src={bookingsIcon} renderingMode="template" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="bookings"
+        options={{
+          title: t('bookings') || 'Bookings',
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              alt="Bookings tab"
+              source={bookingsIcon}
+              style={[
+                styles.icon,
+                { tintColor: color, opacity: focused ? 1 : 0.8 },
+              ]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon src={profileIcon} renderingMode="template" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t('profile') || 'Profile',
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              alt="Profile tab"
+              source={profileIcon}
+              style={[
+                styles.icon,
+                { tintColor: color, opacity: focused ? 1 : 0.8 },
+              ]}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
+    </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  icon: {
+    width: 22,
+    height: 22,
+  },
+});

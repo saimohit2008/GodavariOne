@@ -10,6 +10,9 @@ import {
   HomepageData,
   AuthUser,
   PriorityBookingItem,
+  HotelBookingItem,
+  RestaurantBookingItem,
+  AccommodationBookingItem,
 } from '../types';
 import {
   AUTHENTIC_ANNOUNCEMENTS,
@@ -28,27 +31,70 @@ import {
 } from '../lib/storage';
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const DEV_HOST_IP = '192.168.31.251';
-const DEFAULT_API_URL = `http://${DEV_HOST_IP}:3000/api/v1`;
+const DEV_LAN_IP = '192.168.137.1';
+
+/**
+ * Dynamically resolves the development host IP address.
+ * Prioritizes the active Expo Metro bundler hostUri that served the app bundle,
+ * automatically adapting to Windows Hotspot, LAN Wi-Fi reassignments, and Android emulators.
+ */
+export function getDynamicDevHost(): string {
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    (Constants as any).manifest2?.extra?.expoClient?.hostUri ||
+    (Constants as any).experienceUrl;
+
+  if (hostUri && typeof hostUri === 'string') {
+    const candidate = hostUri.split(':')[0];
+    if (candidate && candidate !== 'localhost' && candidate !== '127.0.0.1') {
+      return candidate;
+    }
+  }
+
+  return DEV_LAN_IP;
+}
 
 export function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  let resolvedUrl = DEFAULT_API_URL;
+  const devHost = getDynamicDevHost();
 
+  // Web platform resolution
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      if (window.location.port !== '3000') {
+        return `http://${window.location.hostname}:3000/api/v1`;
+      }
+      return `${window.location.origin}/api/v1`;
+    }
+    return 'http://localhost:3000/api/v1';
+  }
+
+  // Native Android and iOS
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
-    resolvedUrl = envUrl.replace(/\/+$/, '');
-  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    // On web, use current origin to leverage same-origin Metro proxy and eliminate CORS
-    return `${window.location.origin}/api/v1`;
+    let resolved = envUrl.trim().replace(/\/+$/, '');
+
+    // Synchronize hardcoded LAN IPs with active devHost that served the bundle
+    if (devHost && devHost !== 'localhost' && devHost !== '127.0.0.1') {
+      resolved = resolved.replace(/https?:\/\/[^/:]+(:[0-9]+)?/, (match, port) => {
+        const portStr = port || ':3000';
+        return `http://${devHost}${portStr}`;
+      });
+    }
+
+    if (Platform.OS === 'android' && (devHost === 'localhost' || devHost === '127.0.0.1')) {
+      resolved = resolved.replace(/localhost|127\.0\.0\.1/g, '10.0.2.2');
+    }
+
+    return resolved;
   }
 
-  // Guard against physical Android devices attempting to reach host via 'localhost' or '127.0.0.1'
-  if (Platform.OS === 'android' && (resolvedUrl.includes('localhost') || resolvedUrl.includes('127.0.0.1'))) {
-    resolvedUrl = resolvedUrl.replace(/localhost|127\.0\.0\.1/g, DEV_HOST_IP);
+  if (Platform.OS === 'android') {
+    return `http://${devHost}:3000/api/v1`;
   }
 
-  return resolvedUrl;
+  return `http://${devHost}:3000/api/v1`;
 }
 
 export function resolveImageUrl(url?: string | null): string | null {
@@ -64,46 +110,64 @@ export function resolveImageUrl(url?: string | null): string | null {
   return `${base}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
 }
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 6000;
 
 async function fetchWithTimeout(
   url: string,
   timeout = REQUEST_TIMEOUT_MS,
-  options?: RequestInit
+  options?: RequestInit,
+  retries = 1
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    const extraHeaders: Record<string, string> = {};
-    if (Platform.OS !== 'web') {
-      extraHeaders['X-Client-Platform'] = 'native';
-      extraHeaders['X-Godavari-Client'] = 'godavari-mobile-native-v1';
-    }
-    try {
-      const token = await getSecureItem(AUTH_TOKEN_KEY);
-      if (token) {
-        extraHeaders['Authorization'] = `Bearer ${token}`;
-      }
-    } catch {
-      // safe fallback if storage unreadable
-    }
+  const isGet = !options?.method || options.method === 'GET';
+  let lastErr: any;
 
-    const res = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        ...extraHeaders,
-        ...(options?.headers || {}),
-      },
-    });
-    clearTimeout(timer);
-    return res;
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
+  for (let attempt = 0; attempt <= (isGet ? retries : 0); attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const extraHeaders: Record<string, string> = {
+        'X-Godavari-Client': 'godavari-mobile-native-v1',
+      };
+      if (Platform.OS !== 'web') {
+        extraHeaders['X-Client-Platform'] = 'native';
+      } else {
+        extraHeaders['X-Client-Platform'] = 'mobile-web';
+      }
+      try {
+        const token = await getSecureItem(AUTH_TOKEN_KEY);
+        if (token) {
+          extraHeaders['Authorization'] = `Bearer ${token}`;
+        }
+      } catch {
+        // safe fallback if storage unreadable
+      }
+
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          ...extraHeaders,
+          ...(options?.headers || {}),
+        },
+      });
+      clearTimeout(timer);
+      return res;
+    } catch (err: any) {
+      clearTimeout(timer);
+      lastErr = err;
+      if (!isGet || attempt >= retries) break;
+    }
   }
+
+  if (
+    lastErr?.name === 'AbortError' ||
+    lastErr?.message?.includes('aborted') ||
+    lastErr?.message?.includes('canceled')
+  ) {
+    throw new Error(`Request timed out after ${timeout}ms: ${url}`);
+  }
+  throw lastErr;
 }
 
 export interface ApiResponse<T> {
@@ -325,23 +389,46 @@ export async function getHomepageData(): Promise<HomepageData> {
   const homepageContentUrl = `${baseUrl}/homepage-content`;
 
   try {
-    const [homepageRes, carouselRes, listingsRes] = await Promise.all([
+    const [homepageResult, carouselResult, listingsResult] = await Promise.allSettled([
       fetchWithTimeout(homepageContentUrl),
       fetchWithTimeout(`${baseUrl}/carousel`),
       fetchWithTimeout(`${baseUrl}/listings?limit=24`),
     ]);
 
-    if (!homepageRes.ok || !listingsRes.ok) {
-      throw new Error('Non-200 response from backend API');
+    let homepageJson: any = null;
+    let carouselJson: any = { items: [] };
+    let listingsJson: any = { items: [] };
+
+    let atLeastOneSuccess = false;
+
+    if (homepageResult.status === 'fulfilled' && homepageResult.value.ok) {
+      homepageJson = await homepageResult.value.json().catch(() => null);
+      atLeastOneSuccess = true;
     }
 
-    const homepageJson = await homepageRes.json();
-    const carouselJson = carouselRes.ok ? await carouselRes.json() : { items: [] };
-    const listingsJson = await listingsRes.json();
+    if (carouselResult.status === 'fulfilled' && carouselResult.value.ok) {
+      carouselJson = await carouselResult.value.json().catch(() => ({ items: [] }));
+    }
 
-    const sections = Array.isArray(homepageJson.sections) ? homepageJson.sections : [];
-    const items = Array.isArray(homepageJson.items) ? homepageJson.items : [];
-    const allListings: ListingItem[] = Array.isArray(listingsJson.items) ? listingsJson.items : [];
+    if (listingsResult.status === 'fulfilled' && listingsResult.value.ok) {
+      listingsJson = await listingsResult.value.json().catch(() => ({ items: [] }));
+      atLeastOneSuccess = true;
+    }
+
+    if (!atLeastOneSuccess) {
+      throw new Error(`Failed to reach backend API at ${baseUrl}`);
+    }
+
+    const sections = Array.isArray(homepageJson?.sections) ? homepageJson.sections : [];
+    const items = Array.isArray(homepageJson?.items) ? homepageJson.items : [];
+    const allListings: ListingItem[] = Array.isArray(listingsJson?.items) && listingsJson.items.length > 0
+      ? listingsJson.items
+      : AUTHENTIC_PUBLISHED_LISTINGS;
+
+    // Cache latest live listings into offline storage
+    if (Array.isArray(listingsJson?.items) && listingsJson.items.length > 0) {
+      cacheListings(listingsJson.items);
+    }
 
     // Extract Hero settings
     const heroSection = sections.find((s: any) => s.id === 'hero');
@@ -392,7 +479,7 @@ export async function getHomepageData(): Promise<HomepageData> {
       apiUrl: baseUrl,
     };
   } catch (err: any) {
-    console.error('[API] getHomepageData ERROR:', err?.message || err);
+    console.warn('[API] getHomepageData fallback to cached data:', err?.message || err);
     // Offline / unreachable fallback using authentic database snapshot
     const allListings = AUTHENTIC_PUBLISHED_LISTINGS;
     return {
@@ -542,6 +629,84 @@ export async function registerWithPhone(payload: {
 }
 
 /**
+ * Request an Email OTP code via POST /api/v1/auth/email/request
+ */
+export async function requestEmailOtp(email: string): Promise<ApiResponse<{ message?: string }>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/auth/email/request`;
+  try {
+    const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null as any,
+        isLive: true,
+        error: json.error || json.message || 'Failed to send verification code',
+      };
+    }
+    return {
+      data: json.data || json,
+      isLive: true,
+    };
+  } catch (err: any) {
+    return {
+      data: null as any,
+      isLive: false,
+      error: err?.message || 'Network error sending verification code',
+    };
+  }
+}
+
+/**
+ * Verify Email OTP code and authenticate session via POST /api/v1/auth/email/verify
+ */
+export async function verifyEmailOtp(
+  email: string,
+  code: string
+): Promise<ApiResponse<AuthUser | null>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/auth/email/verify`;
+  try {
+    const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Invalid or expired code',
+      };
+    }
+    const user = json.data?.user || json.data || json.user || null;
+    const token = json.data?.token || json.token || null;
+    if (token) {
+      try {
+        await setSecureItem(AUTH_TOKEN_KEY, token);
+      } catch (e) {
+        console.warn('[Auth] Failed to persist secure token:', e);
+      }
+    }
+    return {
+      data: user,
+      isLive: true,
+    };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error verifying code',
+    };
+  }
+}
+
+/**
  * Log out user session via POST /api/v1/auth/logout
  */
 export async function logoutUser(): Promise<ApiResponse<boolean>> {
@@ -626,6 +791,321 @@ export async function submitPriorityBooking(formData: FormData): Promise<ApiResp
       data: null,
       isLive: false,
       error: err?.message || 'Network error submitting application',
+    };
+  }
+}
+
+/**
+ * Cancel a priority ghat booking application via PATCH /api/v1/priority-bookings/[id]
+ */
+export async function cancelPriorityBooking(
+  bookingId: string,
+  cancellationReason?: string
+): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/priority-bookings/${encodeURIComponent(bookingId)}`;
+  try {
+    const res = await fetchWithTimeout(url, 12000, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'CANCEL',
+        cancellationReason: cancellationReason || 'Cancelled by pilgrim via mobile app',
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Failed to cancel booking',
+      };
+    }
+    return {
+      data: json.data || json,
+      isLive: true,
+    };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error cancelling booking',
+    };
+  }
+}
+
+/**
+ * Fetch authenticated user's hotel room reservations via GET /api/v1/bookings/hotel
+ */
+export async function getHotelBookings(): Promise<ApiResponse<HotelBookingItem[]>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/hotel`;
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) {
+      return { data: [], isLive: true, error: `HTTP ${res.status}` };
+    }
+    const json = await res.json();
+    const items: HotelBookingItem[] = json.data?.items || json.items || [];
+    return { data: items, isLive: true };
+  } catch (err: any) {
+    return {
+      data: [],
+      isLive: false,
+      error: err?.message || 'Unable to load hotel bookings',
+    };
+  }
+}
+
+/**
+ * Create a new hotel room booking via POST /api/v1/bookings/hotel
+ */
+export async function createHotelBooking(data: {
+  listingId: string;
+  roomId?: string;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  rooms?: number;
+  adults?: number;
+  children?: number;
+  specialRequest?: string;
+}): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/hotel`;
+  try {
+    const res = await fetchWithTimeout(url, 15000, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Hotel booking failed',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error submitting hotel booking',
+    };
+  }
+}
+
+/**
+ * Cancel a hotel booking via PATCH /api/v1/bookings/hotel/[id]
+ */
+export async function cancelHotelBooking(id: string): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/hotel/${encodeURIComponent(id)}`;
+  try {
+    const res = await fetchWithTimeout(url, 12000, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'CANCELLED' }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Failed to cancel hotel booking',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error cancelling hotel booking',
+    };
+  }
+}
+
+/**
+ * Fetch authenticated user's restaurant table reservations via GET /api/v1/bookings/restaurant
+ */
+export async function getRestaurantBookings(): Promise<ApiResponse<RestaurantBookingItem[]>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/restaurant`;
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) {
+      return { data: [], isLive: true, error: `HTTP ${res.status}` };
+    }
+    const json = await res.json();
+    const items: RestaurantBookingItem[] = json.data?.items || json.items || [];
+    return { data: items, isLive: true };
+  } catch (err: any) {
+    return {
+      data: [],
+      isLive: false,
+      error: err?.message || 'Unable to load restaurant bookings',
+    };
+  }
+}
+
+/**
+ * Create a restaurant table reservation via POST /api/v1/bookings/restaurant
+ */
+export async function createRestaurantBooking(data: {
+  listingId: string;
+  bookingDate: string;
+  timeSlot: string;
+  peopleCount: number;
+  specialRequest?: string;
+}): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/restaurant`;
+  try {
+    const res = await fetchWithTimeout(url, 15000, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Restaurant reservation failed',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error reserving restaurant table',
+    };
+  }
+}
+
+/**
+ * Cancel a restaurant reservation via PATCH /api/v1/bookings/restaurant/[id]
+ */
+export async function cancelRestaurantBooking(id: string): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/restaurant/${encodeURIComponent(id)}`;
+  try {
+    const res = await fetchWithTimeout(url, 12000, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'CANCELLED' }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Failed to cancel restaurant booking',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error cancelling restaurant booking',
+    };
+  }
+}
+
+/**
+ * Fetch authenticated user's free pilgrim accommodation stays via GET /api/v1/bookings/accommodation
+ */
+export async function getAccommodationBookings(): Promise<ApiResponse<AccommodationBookingItem[]>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/accommodation`;
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) {
+      return { data: [], isLive: true, error: `HTTP ${res.status}` };
+    }
+    const json = await res.json();
+    const items: AccommodationBookingItem[] = json.data?.items || json.items || [];
+    return { data: items, isLive: true };
+  } catch (err: any) {
+    return {
+      data: [],
+      isLive: false,
+      error: err?.message || 'Unable to load accommodation bookings',
+    };
+  }
+}
+
+/**
+ * Register free pilgrim stay via POST /api/v1/bookings/accommodation
+ */
+export async function createAccommodationBooking(data: {
+  listingId: string;
+  checkInDate: string;
+  checkOutDate: string;
+  peopleCount: number;
+  groupType: 'FAMILY' | 'MEN' | 'WOMEN' | 'MIXED';
+  guestName: string;
+  guestPhone: string;
+  idProofType?: string;
+  idProofNumber?: string;
+  specialNotes?: string;
+}): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/accommodation`;
+  try {
+    const res = await fetchWithTimeout(url, 15000, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Free accommodation registration failed',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error registering accommodation',
+    };
+  }
+}
+
+/**
+ * Cancel a free accommodation booking via PATCH /api/v1/bookings/accommodation
+ */
+export async function cancelAccommodationBooking(id: string): Promise<ApiResponse<any>> {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/bookings/accommodation`;
+  try {
+    const res = await fetchWithTimeout(url, 12000, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId: id, status: 'CANCELLED' }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        isLive: true,
+        error: json.error || json.message || 'Failed to cancel accommodation registration',
+      };
+    }
+    return { data: json.data || json, isLive: true };
+  } catch (err: any) {
+    return {
+      data: null,
+      isLive: false,
+      error: err?.message || 'Network error cancelling accommodation registration',
     };
   }
 }
