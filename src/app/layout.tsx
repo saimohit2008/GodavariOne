@@ -23,6 +23,9 @@ export const metadata: Metadata = {
     "pilgrimage",
   ],
   authors: [{ name: "Godavari One" }],
+  verification: {
+    google: "BNE7zhYF5Lxu0jzt-eLDDfTabAXWKj2-dtwkPJM_dlQ",
+  },
 };
 
 export default function RootLayout({
