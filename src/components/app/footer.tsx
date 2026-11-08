@@ -2,10 +2,11 @@
 import { useEffect } from "react";
 import { useApp } from "@/lib/store";
 import { t } from "@/lib/i18n";
-import { Waves, Phone, Mail, MapPin, Shield, Heart } from "lucide-react";
+import { Waves, Phone, Mail, MapPin, Shield, Heart, Download } from "lucide-react";
 import { EMERGENCY_CONTACTS } from "@/lib/constants";
 import { Disclaimer } from "@/components/app/disclaimer";
 import { useApi } from "./use-api";
+import { usePwa } from "@/components/pwa/pwa-store";
 
 export interface FooterContactPublicData {
   isEnabled: boolean;
@@ -16,6 +17,7 @@ export interface FooterContactPublicData {
 
 export function Footer() {
   const { lang, navigate } = useApp();
+  const { triggerInstall } = usePwa();
   const { data: contactData, refetch: refetchContact } = useApi<FooterContactPublicData>("/footer-contact");
 
   // Immediately reflect admin changes across the application
@@ -61,6 +63,15 @@ export function Footer() {
               <li><button className="hover:text-primary text-left" onClick={() => navigate({ name: "directory", category: "GHAT" })}>{t(lang, "ghatsLabel")}</button></li>
               <li><button className="hover:text-primary text-left" onClick={() => navigate({ name: "directory", category: "RESTAURANT" })}>{t(lang, "restaurants")}</button></li>
               <li><button className="hover:text-primary text-left" onClick={() => navigate({ name: "directory", category: "HOTEL" })}>{t(lang, "hotels")}</button></li>
+              <li>
+                <button
+                  className="hover:text-primary text-left text-teal-600 dark:text-teal-400 font-medium flex items-center gap-1.5 pt-1"
+                  onClick={triggerInstall}
+                >
+                  <Download className="size-3.5" />
+                  <span>{lang === "te" ? "యాప్ ఇన్‌స్టాల్ చేయండి (PWA)" : "Install Web App (PWA)"}</span>
+                </button>
+              </li>
             </ul>
           </div>
 

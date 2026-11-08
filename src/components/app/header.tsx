@@ -38,11 +38,14 @@ import {
   KeyRound,
   Plus,
   ChevronDown,
+  Download,
 } from "lucide-react";
 import type { View } from "@/lib/store";
+import { usePwa } from "@/components/pwa/pwa-store";
 
 export function Header() {
   const { lang, setLang, user, navigate, view, searchQuery, setSearchQuery } = useApp();
+  const { triggerInstall, isInstalled } = usePwa();
   const [unread, setUnread] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -128,6 +131,20 @@ export function Header() {
                   <Globe className="size-4" /> NRI Access
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                className="w-full justify-start border-teal-500/30 text-teal-700 dark:text-teal-300 font-medium gap-2 my-1"
+                onClick={() => {
+                  triggerInstall();
+                  setMobileOpen(false);
+                }}
+              >
+                <Download className="size-4 text-teal-600" />
+                <span>{lang === "te" ? "యాప్ ఇన్‌స్టాల్" : "Install App"}</span>
+                <Badge variant="secondary" className="ml-auto text-[10px] bg-teal-100 text-teal-800 border-none">
+                  Free PWA
+                </Badge>
+              </Button>
               {user && (
                 <>
                   <Button variant="ghost" className="justify-start" onClick={() => { navigate({ name: "bookings" }); setMobileOpen(false); }}>
@@ -211,6 +228,20 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
+          {/* Install PWA Button (Desktop/Tablet) */}
+          {!isInstalled && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden sm:inline-flex items-center gap-1.5 h-8 text-xs font-medium border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+              onClick={triggerInstall}
+              title="Install Godavari One Web App"
+            >
+              <Download className="size-3.5 text-teal-600" />
+              <span>{lang === "te" ? "యాప్ ఇన్‌స్టాల్" : "Install App"}</span>
+            </Button>
+          )}
+
           {/* Language switcher */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

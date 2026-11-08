@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline — Godavari One</title>
+  <meta name="theme-color" content="#0f766e" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 1.25rem;
+      padding: 2rem 1.5rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+    }
+    .logo-badge {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #0d9488, #0f766e);
+      border-radius: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+    }
+    .logo-badge svg {
+      width: 32px;
+      height: 32px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 0.5rem;
+    }
+    p.subtitle {
+      font-size: 0.95rem;
+      color: #64748b;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+    .btn-retry {
+      display: inline-block;
+      width: 100%;
+      background: #0f766e;
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.75rem 1.25rem;
+      border-radius: 0.75rem;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      text-decoration: none;
+    }
+    .btn-retry:hover {
+      background: #115e59;
+    }
+    .emergency-box {
+      margin-top: 1.75rem;
+      padding-top: 1.5rem;
+      border-top: 1px dashed #cbd5e1;
+      text-align: left;
+    }
+    .emergency-box h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #e11d48;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .emergency-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .emergency-item a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: #fff1f2;
+      border: 1px solid #ffe4e6;
+      border-radius: 0.5rem;
+      color: #be123c;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .emergency-item a:hover {
+      background: #ffe4e6;
+    }
+    .footer-note {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-badge">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>
+        <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>
+        <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>
+      </svg>
+    </div>
+    <h1>You are currently offline</h1>
+    <p class="subtitle">
+      Godavari One requires an active internet connection to retrieve live crowd status, bookings, and directory information.
+    </p>
+
+    <button class="btn-retry" onclick="window.location.reload()">
+      Retry Connection
+    </button>
+
+    <div class="emergency-box">
+      <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+        </svg>
+        Offline Emergency Helplines
+      </h2>
+      <ul class="emergency-list">
+        <li class="emergency-item"><a href="tel:108"><span>Medical</span><span>108</span></a></li>
+        <li class="emergency-item"><a href="tel:100"><span>Police</span><span>100</span></a></li>
+        <li class="emergency-item"><a href="tel:101"><span>Fire</span><span>101</span></a></li>
+        <li class="emergency-item"><a href="tel:1091"><span>Women</span><span>1091</span></a></li>
+        <li class="emergency-item" style="grid-column: span 2;"><a href="tel:1070"><span>Disaster Management</span><span>1070</span></a></li>
+      </ul>
+    </div>
+
+    <div class="footer-note">
+      Godavari One &bull; Pushkaralu 2027 Digital Platform
+    </div>
+  </div>
+</body>
+</html>
+
