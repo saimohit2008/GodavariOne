@@ -32,8 +32,14 @@ import {
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import {
+  DEV_LAN_IP,
+  isPrivateOrDevHost,
+  resolveApiBaseUrl,
+  resolveImageUrlWithBase,
+} from './api-url';
 
-const DEV_LAN_IP = '192.168.137.1';
+export { DEV_LAN_IP, isPrivateOrDevHost, resolveApiBaseUrl, resolveImageUrlWithBase };
 
 /**
  * Dynamically resolves the development host IP address.
@@ -57,57 +63,22 @@ export function getDynamicDevHost(): string {
 }
 
 export function getApiBaseUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  const devHost = getDynamicDevHost();
-
-  // Web platform resolution
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      if (window.location.port !== '3000') {
-        return `http://${window.location.hostname}:3000/api/v1`;
-      }
-      return `${window.location.origin}/api/v1`;
-    }
-    return 'http://localhost:3000/api/v1';
-  }
-
-  // Native Android and iOS
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
-    let resolved = envUrl.trim().replace(/\/+$/, '');
-
-    // Synchronize hardcoded LAN IPs with active devHost that served the bundle
-    if (devHost && devHost !== 'localhost' && devHost !== '127.0.0.1') {
-      resolved = resolved.replace(/https?:\/\/[^/:]+(:[0-9]+)?/, (match, port) => {
-        const portStr = port || ':3000';
-        return `http://${devHost}${portStr}`;
-      });
-    }
-
-    if (Platform.OS === 'android' && (devHost === 'localhost' || devHost === '127.0.0.1')) {
-      resolved = resolved.replace(/localhost|127\.0\.0\.1/g, '10.0.2.2');
-    }
-
-    return resolved;
-  }
-
-  if (Platform.OS === 'android') {
-    return `http://${devHost}:3000/api/v1`;
-  }
-
-  return `http://${devHost}:3000/api/v1`;
+  return resolveApiBaseUrl({
+    envUrl: process.env.EXPO_PUBLIC_API_URL,
+    devHost: getDynamicDevHost(),
+    platform: Platform.OS,
+    windowOrigin: typeof window !== 'undefined' ? window.location?.origin : null,
+    windowPort: typeof window !== 'undefined' ? window.location?.port : null,
+  });
 }
 
 export function resolveImageUrl(url?: string | null): string | null {
-  if (!url || typeof url !== 'string' || !url.trim()) return null;
-  const trimmed = url.trim();
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-  }
-  const base = getApiBaseUrl().replace(/\/api\/v1\/?$/, '');
-  return `${base}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+  return resolveImageUrlWithBase(
+    url,
+    getApiBaseUrl(),
+    Platform.OS === 'web',
+    typeof window !== 'undefined' ? window.location?.origin : null
+  );
 }
 
 const REQUEST_TIMEOUT_MS = 6000;

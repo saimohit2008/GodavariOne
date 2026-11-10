@@ -7,6 +7,8 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -78,6 +80,25 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  }, [router]);
+
+  // Handle Android hardware back
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleBack]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header Bar */}
@@ -93,7 +114,7 @@ export default function NotificationsScreen() {
       >
         <View style={styles.headerRow}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={handleBack}
             accessibilityRole="button"
             accessibilityLabel="Go back"
             style={({ pressed }) => [

@@ -58,7 +58,7 @@ function formatTimeAgo(dateStr?: string | Date | null): string {
 }
 
 export function ListingDetailView({ id }: { id: string }) {
-  const { lang, navigate, user, pendingBooking } = useApp();
+  const { lang, navigate, goBack, user, pendingBooking } = useApp();
   const { requireAuth } = useBookingAuth();
   const { data: listing, loading, refetch } = useApi<any>(`/listings/${id}`);
   const [fav, setFav] = useState(false);
@@ -71,6 +71,11 @@ export function ListingDetailView({ id }: { id: string }) {
   const [accAvailabilityOpen, setAccAvailabilityOpen] = useState(false);
   const [annadanamStatusOpen, setAnnadanamStatusOpen] = useState(false);
   const [priorityBookingOpen, setPriorityBookingOpen] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+
+  const markImageFailed = (url: string) => {
+    setFailedImages((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
+  };
 
   // Restore pending booking workflow on authentication
   useEffect(() => {
@@ -103,7 +108,7 @@ export function ListingDetailView({ id }: { id: string }) {
     return (
       <div className="container mx-auto max-w-5xl px-4 py-16 text-center">
         <p className="text-muted-foreground">{t(lang, "error")}</p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate({ name: "directory" })}>{t(lang, "back")}</Button>
+        <Button variant="outline" className="mt-4" onClick={() => goBack({ name: "directory" })}>{t(lang, "back")}</Button>
       </div>
     );
   }
@@ -155,15 +160,22 @@ export function ListingDetailView({ id }: { id: string }) {
   return (
     <div className="flex-1">
       <div className="container mx-auto max-w-5xl px-4 py-6">
-        <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate({ name: "directory" })}>
+        <Button variant="ghost" size="sm" className="mb-4" onClick={() => goBack({ name: "directory", category: listing.category })}>
           <ArrowLeft className="size-4" /> {t(lang, "back")}
         </Button>
 
         {/* Gallery */}
         <div className="grid md:grid-cols-3 gap-3 mb-6">
           <div className="md:col-span-2 aspect-[16/9] rounded-xl overflow-hidden bg-muted">
-            {listing.primaryImage ? (
-              <img src={listing.primaryImage} alt={listing.name} className="w-full h-full object-cover" />
+            {listing.primaryImage && !failedImages[listing.primaryImage] ? (
+              <img
+                src={listing.primaryImage}
+                alt={listing.name}
+                className="w-full h-full object-cover"
+                onError={() => {
+                  if (listing.primaryImage) markImageFailed(listing.primaryImage);
+                }}
+              />
             ) : (
               <div className="w-full h-full grid place-items-center bg-gradient-to-br from-accent to-secondary">
                 <CategoryIcon category={listing.category} className="size-20 text-muted-foreground" />
@@ -171,11 +183,27 @@ export function ListingDetailView({ id }: { id: string }) {
             )}
           </div>
           <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
-            {listing.images?.slice(1, 4).map((img: any) => (
-              <div key={img.id} className="aspect-square rounded-lg overflow-hidden bg-muted">
-                <img src={img.url} alt={listing.name} className="w-full h-full object-cover" />
-              </div>
-            ))}
+            {listing.images?.slice(1, 4).map((img: any) => {
+              const hasFailed = Boolean(img.url && failedImages[img.url]);
+              return (
+                <div key={img.id} className="aspect-square rounded-lg overflow-hidden bg-muted">
+                  {!hasFailed ? (
+                    <img
+                      src={img.url}
+                      alt={listing.name}
+                      className="w-full h-full object-cover"
+                      onError={() => {
+                        if (img.url) markImageFailed(img.url);
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full grid place-items-center bg-gradient-to-br from-accent/50 to-secondary/50">
+                      <CategoryIcon category={listing.category} className="size-8 text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

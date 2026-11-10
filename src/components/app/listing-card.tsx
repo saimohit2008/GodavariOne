@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,13 +55,25 @@ const CROWD_COLORS: Record<string, string> = {
 export function ListingCard({ listing }: { listing: ListingCardData }) {
   const { lang, navigate } = useApp();
   const meta = CATEGORY_META[listing.category];
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  const hasValidImage = Boolean(listing.primaryImage && failedUrl !== listing.primaryImage);
 
   return (
     <Card className="group overflow-hidden p-0 gap-0 hover:shadow-md transition-shadow cursor-pointer flex flex-col h-full" onClick={() => navigate({ name: "listing", id: listing.id })}>
       <div className="relative aspect-[4/3] bg-muted overflow-hidden">
-        {listing.primaryImage ? (
+        {hasValidImage ? (
            
-          <img src={listing.primaryImage} alt={listing.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <img
+            src={listing.primaryImage!}
+            alt={listing.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={() => {
+              if (listing.primaryImage) {
+                setFailedUrl(listing.primaryImage);
+              }
+            }}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent to-secondary">
             <CategoryIcon category={listing.category} className="size-12 text-muted-foreground" />

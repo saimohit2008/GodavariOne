@@ -61,6 +61,115 @@ export type AdminTab =
   | "nri-management"
   | "nri-requests";
 
+export function viewToUrl(view: View): string {
+  if (view.name === "home") {
+    return "/";
+  }
+  const params = new URLSearchParams();
+  params.set("view", view.name);
+  if ("id" in view && view.id) {
+    params.set("id", view.id);
+  }
+  if ("category" in view && view.category) {
+    params.set("category", view.category);
+  }
+  if ("q" in view && view.q) {
+    params.set("q", view.q);
+  }
+  if ("tab" in view && view.tab) {
+    params.set("tab", view.tab);
+  }
+  if ("ref" in view && view.ref) {
+    params.set("ref", view.ref);
+  }
+  if ("purohitId" in view && view.purohitId) {
+    params.set("purohitId", view.purohitId);
+  }
+  return `/?${params.toString()}`;
+}
+
+export function urlToView(searchStr: string): View | null {
+  if (!searchStr || searchStr === "?" || searchStr === "/") return null;
+  const queryString = searchStr.includes("?") ? searchStr.slice(searchStr.indexOf("?") + 1) : searchStr;
+  const params = new URLSearchParams(queryString);
+  const viewName = params.get("view");
+  if (!viewName) {
+    const cat = params.get("category");
+    const q = params.get("q");
+    if (cat || q) {
+      return { name: "directory", category: cat || undefined, q: q || undefined };
+    }
+    return null;
+  }
+
+  switch (viewName) {
+    case "home":
+      return { name: "home" };
+    case "directory":
+      return {
+        name: "directory",
+        category: params.get("category") || undefined,
+        q: params.get("q") || undefined,
+      };
+    case "listing": {
+      const id = params.get("id");
+      return id ? { name: "listing", id } : { name: "directory" };
+    }
+    case "listing-form":
+      return {
+        name: "listing-form",
+        id: params.get("id") || undefined,
+        category: params.get("category") || undefined,
+      };
+    case "login":
+      return { name: "login" };
+    case "register":
+      return { name: "register" };
+    case "admin-login":
+      return { name: "admin-login" };
+    case "admin":
+      return { name: "admin", tab: (params.get("tab") as AdminTab) || undefined };
+    case "bookings":
+      return { name: "bookings" };
+    case "favorites":
+      return { name: "favorites" };
+    case "notifications":
+      return { name: "notifications" };
+    case "visitor-dashboard":
+      return { name: "visitor-dashboard" };
+    case "owner-dashboard":
+      return { name: "owner-dashboard" };
+    case "ghat-reporter":
+      return { name: "ghat-reporter" };
+    case "ghat-supervisor":
+      return { name: "ghat-supervisor" };
+    case "reviewer-dashboard":
+      return { name: "reviewer-dashboard" };
+    case "editor-dashboard":
+      return { name: "editor-dashboard" };
+    case "nri-service-manager":
+      return { name: "nri-service-manager" };
+    case "purohit-dashboard":
+      return { name: "purohit-dashboard" };
+    case "ceremonies":
+      return {
+        name: "ceremonies",
+        category: params.get("category") || undefined,
+        purohitId: params.get("purohitId") || undefined,
+      };
+    case "nri-access":
+      return { name: "nri-access", ref: params.get("ref") || undefined };
+    case "carousel-detail": {
+      const id = params.get("id");
+      return id ? { name: "carousel-detail", id } : { name: "home" };
+    }
+    case "ai-assistant":
+      return { name: "ai-assistant" };
+    default:
+      return null;
+  }
+}
+
 export interface CurrentUser {
   id: string;
   name: string | null;
@@ -100,10 +209,12 @@ interface AppState {
   searchQuery: string;
   pendingBooking: PendingBooking | null;
   bookingAuthModal: BookingAuthModalState;
+  navDepth: number;
   // actions
   setLang: (l: Lang) => void;
   toggleTheme: () => void;
-  navigate: (v: View) => void;
+  navigate: (v: View, opts?: { replace?: boolean; skipHistory?: boolean }) => void;
+  goBack: (fallback?: View) => void;
   setUser: (u: CurrentUser | null) => void;
   setAuthLoading: (b: boolean) => void;
   setSearchQuery: (q: string) => void;
@@ -117,7 +228,7 @@ interface AppState {
 
 export const useApp = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       lang: "en",
       theme: "light",
       view: { name: "home" },
@@ -126,9 +237,20 @@ export const useApp = create<AppState>()(
       searchQuery: "",
       pendingBooking: null,
       bookingAuthModal: { isOpen: false },
+      navDepth: 0,
       setLang: (l) => set({ lang: l }),
       toggleTheme: () => set((s) => ({ theme: s.theme === "light" ? "dark" : "light" })),
-      navigate: (v) => {
+      goBack: (fallback) => {
+        if (typeof window !== "undefined") {
+          const currentDepth = get().navDepth;
+          if (window.history.length > 1 && currentDepth > 0) {
+            window.history.back();
+            return;
+          }
+        }
+        get().navigate(fallback || { name: "home" });
+      },
+      navigate: (v, opts) => {
         set({ view: v });
         if (typeof window !== "undefined") {
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -136,6 +258,7 @@ export const useApp = create<AppState>()(
             if (v.name === "home") {
               // eslint-disable-next-line @next/next/no-location-assign-relative-destination
               window.location.href = "/";
+              return;
             } else {
               try {
                 sessionStorage.setItem("godavari_pending_view", JSON.stringify(v));
@@ -144,6 +267,23 @@ export const useApp = create<AppState>()(
               }
               // eslint-disable-next-line @next/next/no-location-assign-relative-destination
               window.location.href = "/";
+              return;
+            }
+          }
+
+          if (!opts?.skipHistory) {
+            const targetUrl = viewToUrl(v);
+            if (opts?.replace) {
+              window.history.replaceState({ view: v, godavariDepth: get().navDepth }, "", targetUrl);
+            } else {
+              const nextDepth = get().navDepth + 1;
+              window.history.pushState({ view: v, godavariDepth: nextDepth }, "", targetUrl);
+              set({ navDepth: nextDepth });
+              try {
+                sessionStorage.setItem("godavari_nav_depth", String(nextDepth));
+              } catch {
+                // ignore storage errors
+              }
             }
           }
         }

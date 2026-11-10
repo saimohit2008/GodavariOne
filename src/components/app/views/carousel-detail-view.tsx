@@ -83,7 +83,7 @@ const CONTENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export function CarouselDetailView({ id }: { id: string }) {
-  const { navigate } = useApp();
+  const { navigate, goBack } = useApp();
   const [data, setData] = useState<CarouselDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,7 +237,7 @@ export function CarouselDetailView({ id }: { id: string }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate({ name: "home" })}
+          onClick={() => goBack({ name: "home" })}
           className="gap-2 font-semibold text-primary hover:text-primary/80"
           id="carousel-back-to-home"
         >

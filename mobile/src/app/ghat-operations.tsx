@@ -8,6 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -111,6 +113,29 @@ export default function GhatOperationsScreen() {
     }
   };
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  }, [router]);
+
+  // Handle Android hardware back: close scanner if open, else navigate back
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const onBackPress = () => {
+      if (scannerVisible) {
+        setScannerVisible(false);
+        return true;
+      }
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [scannerVisible, handleBack]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header Bar */}
@@ -126,7 +151,7 @@ export default function GhatOperationsScreen() {
       >
         <View style={styles.headerRow}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={handleBack}
             accessibilityRole="button"
             accessibilityLabel="Go back"
             style={({ pressed }) => [
@@ -196,7 +221,7 @@ export default function GhatOperationsScreen() {
             {t('accessRestrictedDesc')}
           </Text>
           <Pressable
-            onPress={() => router.back()}
+            onPress={handleBack}
             accessibilityRole="button"
             accessibilityLabel="Return"
             style={({ pressed }) => [

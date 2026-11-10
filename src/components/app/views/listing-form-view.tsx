@@ -28,7 +28,7 @@ interface ImageItem {
 }
 
 export function ListingFormView({ id, initialCategory }: { id?: string; initialCategory?: string }) {
-  const { lang, navigate, user } = useApp();
+  const { lang, navigate, goBack, user } = useApp();
   const isEdit = !!id;
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
@@ -281,7 +281,7 @@ export function ListingFormView({ id, initialCategory }: { id?: string; initialC
 
   return (
     <div className="flex-1 container mx-auto max-w-4xl px-4 py-8">
-      <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate({ name: user?.role === "SUPER_ADMIN" ? "admin" : "directory" })}>
+      <Button variant="ghost" size="sm" className="mb-4" onClick={() => goBack({ name: user?.role === "SUPER_ADMIN" ? "admin" : "directory" })}>
         <ArrowLeft className="size-4" /> {t(lang, "back")}
       </Button>
       <h1 className="text-3xl font-bold mb-1">{isEdit ? t(lang, "editListing") : t(lang, "createListing")}</h1>

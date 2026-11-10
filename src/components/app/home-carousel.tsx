@@ -47,8 +47,20 @@ export function HomeCarousel() {
   const offsetRef = useRef(0);
   const animFrameRef = useRef<number | null>(null);
   const dragStartXRef = useRef(0);
+  const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
   const dragStartOffsetRef = useRef(0);
   const hasDraggedRef = useRef(false);
+  const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper to schedule auto-resume after user gesture
+  const scheduleAutoResume = useCallback((delayMs = 2800) => {
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    setIsPaused(true);
+    resumeTimeoutRef.current = setTimeout(() => {
+      setIsPaused(false);
+    }, delayMs);
+  }, []);
 
   // Check for reduced motion preference
   useEffect(() => {
@@ -107,6 +119,8 @@ export function HomeCarousel() {
       const track = trackRef.current;
       if (!track || count <= 1) return;
 
+      scheduleAutoResume(3200);
+
       const cardWidth = (track.firstElementChild as HTMLElement)?.offsetWidth || 420;
       const gap = 16;
       const step = cardWidth + gap;
@@ -137,13 +151,35 @@ export function HomeCarousel() {
         direction === "next" ? (activeIndex + 1) % count : (activeIndex - 1 + count) % count;
       setActiveIndex(nextIdx);
     },
-    [count, activeIndex]
+    [count, activeIndex, scheduleAutoResume]
   );
+
+  // Snap smoothly to closest slide if drag is below swipe threshold
+  const snapToNearest = useCallback(() => {
+    const track = trackRef.current;
+    if (!track || count <= 1) return;
+    const cardWidth = (track.firstElementChild as HTMLElement)?.offsetWidth || 420;
+    const gap = 16;
+    const step = cardWidth + gap;
+    const halfWidth = track.scrollWidth / 2;
+    let nearestIndex = Math.round(offsetRef.current / step);
+    let targetOffset = nearestIndex * step;
+    if (targetOffset >= halfWidth) targetOffset -= halfWidth;
+    if (targetOffset < 0) targetOffset += halfWidth;
+    offsetRef.current = targetOffset;
+    track.style.transition = "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)";
+    track.style.transform = `translate3d(-${targetOffset}px, 0, 0)`;
+    setTimeout(() => {
+      if (trackRef.current) trackRef.current.style.transition = "none";
+    }, 360);
+    setActiveIndex(((nearestIndex % count) + count) % count);
+  }, [count]);
 
   // Jump to specific indicator
   const handleJumpToIndex = (idx: number) => {
     const track = trackRef.current;
     if (!track || count <= 1) return;
+    scheduleAutoResume(3200);
     const cardWidth = (track.firstElementChild as HTMLElement)?.offsetWidth || 420;
     const gap = 16;
     const targetOffset = idx * (cardWidth + gap);
@@ -159,30 +195,64 @@ export function HomeCarousel() {
   // Touch / Pointer gesture handlers for mobile & desktop drag
   const onPointerDown = (e: React.PointerEvent) => {
     if (count <= 1) return;
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
     setIsDragging(true);
+    setIsPaused(true);
     hasDraggedRef.current = false;
     dragStartXRef.current = e.clientX;
+    dragStartYRef.current = e.clientY;
+    dragStartTimeRef.current = Date.now();
     dragStartOffsetRef.current = offsetRef.current;
+    try {
+      (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // safe fallback if pointer capture unsupported
+    }
     if (trackRef.current) trackRef.current.style.transition = "none";
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!isDragging || !trackRef.current) return;
-    const diff = dragStartXRef.current - e.clientX;
-    if (Math.abs(diff) > 5) {
+    const diffX = dragStartXRef.current - e.clientX;
+    if (Math.abs(diffX) > 6) {
       hasDraggedRef.current = true;
     }
     const track = trackRef.current;
     const halfWidth = track.scrollWidth / 2;
-    let newOffset = dragStartOffsetRef.current + diff;
+    let newOffset = dragStartOffsetRef.current + diffX;
     if (newOffset < 0) newOffset += halfWidth;
     if (newOffset >= halfWidth) newOffset -= halfWidth;
     offsetRef.current = newOffset;
     track.style.transform = `translate3d(-${newOffset}px, 0, 0)`;
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!isDragging) return;
     setIsDragging(false);
+    try {
+      (e.currentTarget as HTMLElement)?.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // safe fallback
+    }
+
+    const diffX = dragStartXRef.current - e.clientX;
+    const elapsedMs = Date.now() - dragStartTimeRef.current;
+    const isFlick = elapsedMs < 350 && Math.abs(diffX) > 30;
+    const isThreshold = Math.abs(diffX) > 50;
+
+    if (isFlick || isThreshold) {
+      if (diffX > 0) {
+        // Dragged or swiped left -> advance to next slide
+        handleShift("next");
+      } else {
+        // Dragged or swiped right -> return to previous slide
+        handleShift("prev");
+      }
+    } else {
+      snapToNearest();
+    }
+
+    scheduleAutoResume(3000);
   };
 
   const handleBannerClick = (banner: CarouselBannerItem) => {
@@ -265,10 +335,12 @@ export function HomeCarousel() {
       <div
         ref={containerRef}
         className="w-full max-w-full relative overflow-hidden select-none cursor-grab active:cursor-grabbing px-4"
+        style={{ touchAction: "pan-y" }}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => {
-          setIsPaused(false);
-          setIsDragging(false);
+          if (!isDragging) {
+            setIsPaused(false);
+          }
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -302,11 +374,14 @@ export function HomeCarousel() {
                   <img
                     src={banner.imageUrl}
                     alt={banner.title}
+                    draggable={false}
                     loading={index < 3 ? "eager" : "lazy"}
-                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
+                    className="w-full h-full object-cover object-center pointer-events-none select-none group-hover:scale-105 transition-transform duration-500 ease-out"
                     onError={(e) => {
-                      // Fallback image if broken
-                      (e.target as HTMLImageElement).src =
+                      // Fallback image if broken, preventing infinite loops
+                      const img = e.currentTarget;
+                      img.onerror = null;
+                      img.src =
                         "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=1000&auto=format&fit=crop&q=80";
                     }}
                   />

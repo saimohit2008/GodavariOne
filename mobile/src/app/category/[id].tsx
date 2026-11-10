@@ -7,6 +7,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -150,13 +152,26 @@ export default function CategoryScreen() {
     loadData();
   }, [loadData]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/explore');
     }
-  };
+  }, [router]);
+
+  // Handle Android hardware back: return to previous screen or explore
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleBack]);
 
   // Safe fallback if invalid category param
   if (!categoryMeta) {
@@ -607,4 +622,3 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
 });
-

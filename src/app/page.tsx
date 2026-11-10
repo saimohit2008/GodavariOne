@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { useApp } from "@/lib/store";
+import { useApp, urlToView, viewToUrl } from "@/lib/store";
 import { api } from "@/lib/api-client";
 import { Header } from "@/components/app/header";
 import { Footer } from "@/components/app/footer";
@@ -27,20 +27,74 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function Home() {
   const { view, user, authLoading, setUser, setAuthLoading, navigate } = useApp();
 
-  // restore pending view from cross-page navigation if any
+  // Handle initial URL / deep-linking and browser popstate (back-swipe navigation)
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Check if there's a view encoded in URL search params
+    const initialViewFromUrl = urlToView(window.location.search);
+
+    // Check pending view from cross-page navigation if any
+    let pendingView: any = null;
     try {
-      const pending = sessionStorage.getItem("godavari_pending_view");
-      if (pending) {
+      const pendingStr = sessionStorage.getItem("godavari_pending_view");
+      if (pendingStr) {
         sessionStorage.removeItem("godavari_pending_view");
-        const parsed = JSON.parse(pending);
+        const parsed = JSON.parse(pendingStr);
         if (parsed && typeof parsed === "object" && parsed.name) {
-          navigate(parsed);
+          pendingView = parsed;
         }
       }
     } catch {
       // ignore
     }
+
+    const targetInitialView = pendingView || initialViewFromUrl;
+
+    if (targetInitialView && targetInitialView.name !== "home") {
+      // Deep link entry: replace base history with Home (depth 0) and push the target deep view (depth 1)
+      // This ensures that when the user back-swipes from a direct link, they land on Home
+      // instead of exiting Godavari One.
+      window.history.replaceState({ view: { name: "home" }, godavariDepth: 0 }, "", "/");
+      window.history.pushState(
+        { view: targetInitialView, godavariDepth: 1 },
+        "",
+        viewToUrl(targetInitialView)
+      );
+      try {
+        sessionStorage.setItem("godavari_nav_depth", "1");
+      } catch {
+        // ignore
+      }
+      navigate(targetInitialView, { skipHistory: true });
+    } else {
+      // Direct visit to home: ensure base state exists in history
+      const currentState = window.history.state;
+      if (!currentState || !currentState.view) {
+        window.history.replaceState({ view: { name: "home" }, godavariDepth: 0 }, "", "/");
+        try {
+          sessionStorage.setItem("godavari_nav_depth", "0");
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // Listen to browser Back / Forward gestures and buttons
+    const handlePopState = (event: PopStateEvent) => {
+      const stateView = event.state?.view;
+      if (stateView && typeof stateView === "object" && stateView.name) {
+        navigate(stateView, { skipHistory: true });
+      } else {
+        const fallbackView = urlToView(window.location.search) || { name: "home" };
+        navigate(fallbackView, { skipHistory: true });
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, [navigate]);
 
   // bootstrap session on mount

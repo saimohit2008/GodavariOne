@@ -11,6 +11,7 @@ import {
   Linking,
   Share,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -92,13 +93,34 @@ export default function ListingDetailScreen() {
     loadListing();
   }, [loadListing]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/explore');
     }
-  };
+  }, [router]);
+
+  // Handle Android hardware back: dismiss open modals first, otherwise navigate back
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onBackPress = () => {
+      if (hotelModalVisible) {
+        setHotelModalVisible(false);
+        return true;
+      }
+      if (restaurantModalVisible) {
+        setRestaurantModalVisible(false);
+        return true;
+      }
+      handleBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [hotelModalVisible, restaurantModalVisible, handleBack]);
 
   const handleToggleFavorite = () => {
     if (!rawId) return;

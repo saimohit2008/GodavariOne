@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,79 @@ export interface HomeCarouselProps {
 export function HomeCarousel({ banners, onPressBanner }: HomeCarouselProps) {
   const { lang, colors, isDark } = useApp();
   const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
   const flatListRef = useRef<FlatList>(null);
+  const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  const scheduleAutoplay = useCallback((delayMs = 4500) => {
+    if (autoplayTimerRef.current) {
+      clearTimeout(autoplayTimerRef.current);
+      autoplayTimerRef.current = null;
+    }
+    if (!banners || banners.length <= 1) return;
+
+    autoplayTimerRef.current = setTimeout(() => {
+      if (isDraggingRef.current) return;
+      const nextIndex = (activeIndexRef.current + 1) % banners.length;
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+      setActiveIndex(nextIndex);
+      activeIndexRef.current = nextIndex;
+      scheduleAutoplay(4500);
+    }, delayMs);
+  }, [banners]);
+
+  // Start autoplay on mount and cleanup on unmount
+  useEffect(() => {
+    scheduleAutoplay(4500);
+    return () => {
+      if (autoplayTimerRef.current) {
+        clearTimeout(autoplayTimerRef.current);
+        autoplayTimerRef.current = null;
+      }
+    };
+  }, [scheduleAutoplay]);
+
+  const handleScrollBeginDrag = () => {
+    isDraggingRef.current = true;
+    if (autoplayTimerRef.current) {
+      clearTimeout(autoplayTimerRef.current);
+      autoplayTimerRef.current = null;
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    isDraggingRef.current = false;
+    scheduleAutoplay(4500);
+  };
+
+  const handleMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    isDraggingRef.current = false;
+    const slideSize = CARD_WIDTH + Spacing.three;
+    const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
+    if (index >= 0 && index < banners.length) {
+      setActiveIndex(index);
+      activeIndexRef.current = index;
+    }
+    scheduleAutoplay(4500);
+  };
+
+  const handleManualShift = (direction: 'next' | 'prev') => {
+    if (!banners || banners.length <= 1) return;
+    const targetIdx =
+      direction === 'next'
+        ? (activeIndex + 1) % banners.length
+        : (activeIndex - 1 + banners.length) % banners.length;
+
+    flatListRef.current?.scrollToIndex({ index: targetIdx, animated: true });
+    setActiveIndex(targetIdx);
+    activeIndexRef.current = targetIdx;
+    scheduleAutoplay(4500);
+  };
 
   if (!banners || banners.length === 0) {
     return null;
@@ -39,6 +111,7 @@ export function HomeCarousel({ banners, onPressBanner }: HomeCarouselProps) {
     const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
     if (index !== activeIndex && index >= 0 && index < banners.length) {
       setActiveIndex(index);
+      activeIndexRef.current = index;
     }
   };
 
@@ -153,6 +226,52 @@ export function HomeCarousel({ banners, onPressBanner }: HomeCarouselProps) {
             {lang === 'te' ? 'గోదావరి పుష్కరాలు 2027' : 'Pushkaralu 2027'}
           </Text>
         </View>
+
+        {/* Manual navigation controls */}
+        {banners.length > 1 && (
+          <View style={styles.navControls}>
+            <Pressable
+              onPress={() => handleManualShift('prev')}
+              accessibilityRole="button"
+              accessibilityLabel="Previous slide"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.navBtn,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                },
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <AppIcon
+                name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron-left' }}
+                size={14}
+                color={colors.text}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => handleManualShift('next')}
+              accessibilityRole="button"
+              accessibilityLabel="Next slide"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.navBtn,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                },
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <AppIcon
+                name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron-right' }}
+                size={14}
+                color={colors.text}
+              />
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* Sliding Carousel */}
@@ -164,31 +283,53 @@ export function HomeCarousel({ banners, onPressBanner }: HomeCarouselProps) {
         horizontal
         showsHorizontalScrollIndicator={false}
         snapToInterval={CARD_WIDTH + Spacing.three}
+        snapToAlignment="start"
         decelerationRate="fast"
+        nestedScrollEnabled={true}
         contentContainerStyle={styles.carouselList}
         onScroll={onScroll}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
         scrollEventThrottle={16}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+          }, 100);
+        }}
       />
 
       {/* Pagination Indicators */}
       {banners.length > 1 && (
         <View style={styles.paginationRow}>
           {banners.map((_, i) => (
-            <View
+            <Pressable
               key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor:
-                    i === activeIndex
-                      ? colors.primary
-                      : isDark
-                      ? 'rgba(255,255,255,0.2)'
-                      : 'rgba(0,0,0,0.15)',
-                  width: i === activeIndex ? 20 : 6,
-                },
-              ]}
-            />
+              onPress={() => {
+                flatListRef.current?.scrollToIndex({ index: i, animated: true });
+                setActiveIndex(i);
+                activeIndexRef.current = i;
+                scheduleAutoplay(4500);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Banner ${i + 1}`}
+            >
+              <View
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor:
+                      i === activeIndex
+                        ? colors.primary
+                        : isDark
+                        ? 'rgba(255,255,255,0.2)'
+                        : 'rgba(0,0,0,0.15)',
+                    width: i === activeIndex ? 20 : 6,
+                  },
+                ]}
+              />
+            </Pressable>
           ))}
         </View>
       )}
@@ -227,6 +368,19 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 11,
+  },
+  navControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  navBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   carouselList: {
     gap: Spacing.three,
