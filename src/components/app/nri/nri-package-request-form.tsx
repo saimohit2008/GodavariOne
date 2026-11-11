@@ -19,7 +19,7 @@ import {
 import {
   Users, Calendar, MapPin, Building, Utensils, Sparkles, CheckCircle2,
   ShieldCheck, ArrowRight, Plane, Globe, Compass, Landmark, Phone, Mail,
-  Search, AlertCircle, Clock, FileText, ChevronRight, Home, ArrowLeft, ExternalLink,
+  Search, AlertCircle, Clock, FileText, ChevronRight, Home, ArrowLeft,
   Info, BellRing, Car, Flame, Check, XCircle,
 } from "lucide-react";
 import {
@@ -505,13 +505,15 @@ export function NriPackageRequestForm({ initialRef }: { initialRef?: string }) {
             {config.welcomeMessage || "The NRI Access section is currently offline for scheduled administrative review. Public directory listings and emergency services remain active."}
           </p>
         </div>
-        <div className="p-4 rounded-xl border bg-card max-w-md mx-auto text-xs text-muted-foreground space-y-2 text-left">
-          <p className="font-semibold text-foreground flex items-center gap-1.5">
-            <Phone className="size-3.5 text-primary" /> Urgent Inquiries & Pushkara Helpline:
-          </p>
-          <p>Helpline: {config.supportPhone || "+91 883 2450000 / 14500"}</p>
-          <p>Email: {config.supportEmail || "nri-desk@godavarione.ap.gov.in"}</p>
-        </div>
+        {config.supportPhone && (
+          <div className="p-4 rounded-xl border bg-card max-w-md mx-auto text-xs text-muted-foreground space-y-2 text-left">
+            <p className="font-semibold text-foreground flex items-center gap-1.5">
+              <Phone className="size-3.5 text-primary" /> Urgent Inquiries & Pushkara Helpline:
+            </p>
+            <p>Helpline: {config.supportPhone}</p>
+            {config.supportEmail && <p>Email: {config.supportEmail}</p>}
+          </div>
+        )}
         <div className="pt-4 flex justify-center gap-3">
           <Button
             size="lg"
@@ -676,7 +678,7 @@ export function NriPackageRequestForm({ initialRef }: { initialRef?: string }) {
             {config?.heroTitle || "Curated All-Inclusive Pilgrimage Packages for Godavari Pushkaralu 2027"}
           </h1>
           <p className="text-teal-100 text-sm md:text-base leading-relaxed">
-            {config?.heroDescription || "Experience the divine Maha Pushkaralu without logistics stress. Receive transparent, itemized quotations covering private airport pickup, riverside luxury accommodation, VIP Pushkara snanam passes, and chauffeured transit."}
+            {config?.heroDescription || "Experience the divine Maha Pushkaralu without logistics stress. Receive transparent, itemized quotations covering private airport pickup, riverside luxury accommodation, and chauffeured transit."}
           </p>
           {config?.welcomeMessage && (
             <p className="text-xs text-teal-200/90 italic pt-1 border-t border-teal-700/50">
@@ -1734,63 +1736,6 @@ export function NriPackageRequestForm({ initialRef }: { initialRef?: string }) {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Dedicated Support, Emergency Contacts & Official External Links */}
-      <div className="border rounded-2xl p-6 bg-card shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
-          <div>
-            <h3 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Phone className="size-4 text-teal-600" /> Dedicated NRI & Global Pilgrim Assistance Desk
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {config?.supportInstructions || "Direct administrative assistance for itinerary queries, VIP permits, and airport liaison."}
-            </p>
-          </div>
-          {config?.externalGuideUrl && (
-            <Button size="sm" variant="outline" asChild className="text-xs gap-1.5 shadow-xs">
-              <a href={config.externalGuideUrl} target="_blank" rel="noopener noreferrer">
-                <Globe className="size-3.5 text-teal-600" />
-                <span>AP Tourism Pushkaralu Portal</span>
-                <ExternalLink className="size-3 text-muted-foreground" />
-              </a>
-            </Button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div className="flex items-start gap-2.5">
-            <span className="size-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 grid place-items-center shrink-0">
-              <Phone className="size-3.5" />
-            </span>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Helpline & WhatsApp</span>
-              <span className="font-semibold text-foreground text-sm">{config?.supportPhone || "+91 883 2450000 / 14500"}</span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5">
-            <span className="size-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 grid place-items-center shrink-0">
-              <Mail className="size-3.5" />
-            </span>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Official NRI Support Email</span>
-              <a href={`mailto:${config?.supportEmail || "nri-desk@godavarione.ap.gov.in"}`} className="font-semibold text-primary hover:underline text-sm">
-                {config?.supportEmail || "nri-desk@godavarione.ap.gov.in"}
-              </a>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5">
-            <span className="size-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 grid place-items-center shrink-0">
-              <Clock className="size-3.5" />
-            </span>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Operational Hours</span>
-              <span className="font-semibold text-foreground">{config?.helplineHours || "24x7 Continuous Support During Pushkaralu"}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

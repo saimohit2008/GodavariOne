@@ -130,7 +130,7 @@ export function NriVisitorSection() {
           <FileText className="size-8 mx-auto text-muted-foreground/50 mb-2" />
           <p className="text-sm font-medium text-foreground">No NRI package requests yet</p>
           <p className="text-xs text-muted-foreground mt-1 mb-4">
-            Plan your custom pilgrimage with private airport transit, 4/5-star accommodation, and VIP Pushkara snanam.
+            Plan your custom pilgrimage with private airport transit, 4/5-star accommodation, and sacred Pushkara snanam.
           </p>
           <Button asChild size="sm" className="bg-teal-700 hover:bg-teal-800 text-white">
             <a href="/nri-access">Create NRI Package Request</a>

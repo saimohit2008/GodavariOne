@@ -529,25 +529,25 @@ export function NriManagementSection() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs font-semibold mb-1.5 block flex items-center gap-1.5">
-                      <Phone className="size-3.5 text-teal-600" /> NRI Support Phone & WhatsApp
+                      <Phone className="size-3.5 text-teal-600" /> Support Phone
                     </Label>
                     <Input
                       value={cfgSupportPhone}
                       onChange={(e) => setCfgSupportPhone(e.target.value)}
-                      placeholder="+91 883 2450000 / 14500"
+                      placeholder="e.g. +91 80000 00000"
                       className="bg-card font-mono text-xs"
                     />
                   </div>
 
                   <div>
                     <Label className="text-xs font-semibold mb-1.5 block flex items-center gap-1.5">
-                      <Mail className="size-3.5 text-teal-600" /> Dedicated NRI Support Email
+                      <Mail className="size-3.5 text-teal-600" /> Support Email
                     </Label>
                     <Input
                       type="email"
                       value={cfgSupportEmail}
                       onChange={(e) => setCfgSupportEmail(e.target.value)}
-                      placeholder="nri-desk@godavarione.ap.gov.in"
+                      placeholder="e.g. support@godavarione.org"
                       className="bg-card text-xs"
                     />
                   </div>
@@ -561,19 +561,19 @@ export function NriManagementSection() {
                     <Input
                       value={cfgHelplineHours}
                       onChange={(e) => setCfgHelplineHours(e.target.value)}
-                      placeholder="e.g. 24x7 Dedicated Pushkara Desk"
+                      placeholder="e.g. 9:00 AM - 6:00 PM IST"
                       className="bg-card text-xs"
                     />
                   </div>
 
                   <div>
                     <Label className="text-xs font-semibold mb-1.5 block flex items-center gap-1.5">
-                      <ExternalLink className="size-3.5 text-teal-600" /> External Government / AP Tourism Guide URL
+                      <ExternalLink className="size-3.5 text-teal-600" /> External Guide URL
                     </Label>
                     <Input
                       value={cfgExternalGuideUrl}
                       onChange={(e) => setCfgExternalGuideUrl(e.target.value)}
-                      placeholder="https://tourism.ap.gov.in"
+                      placeholder="https://example.com/guide"
                       className="bg-card text-xs font-mono"
                     />
                   </div>
@@ -585,7 +585,7 @@ export function NriManagementSection() {
                     rows={2}
                     value={cfgSupportInstructions}
                     onChange={(e) => setCfgSupportInstructions(e.target.value)}
-                    placeholder="Instructions regarding airport meeting points, VIP permits, or coordination protocols..."
+                    placeholder="General pilgrimage assistance instructions..."
                     className="bg-card text-xs"
                   />
                 </div>

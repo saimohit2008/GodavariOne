@@ -4,6 +4,7 @@ import { getCurrentUser, verifyPassword, generateOtp, hashOtp, OTP_CONFIG, audit
 import { ok, fail, handler, getClientIp, phoneSchema, zodError } from "@/lib/validation";
 import { toNationalPhone, normalizeToE164 } from "@/lib/twilio";
 import { sendSms } from "@/lib/sms";
+import { sendEmail } from "@/lib/email";
 import { z } from "zod";
 
 // POST /api/v1/admin/account/phone/request
@@ -125,7 +126,26 @@ export const POST = handler(async (req: NextRequest) => {
     message: `Your Godavari One Super Admin mobile verification code is: ${otpCode}. Valid for 5 minutes. Do not share this code.`,
   });
 
-  // Check if dev fallback should supply the code (e.g. dev mode or SMS unconfigured)
+  // Dual-channel security: Also dispatch to Super Admin's verified email
+  let emailResult = { success: false };
+  if (user.email) {
+    emailResult = await sendEmail({
+      to: user.email,
+      subject: "Godavari One — Super Admin Mobile Number Verification Code",
+      text: `Hello ${user.name || "Administrator"},\n\nA request was made to update your Godavari One Super Admin mobile number to ${nationalPhone}.\n\nYour 6-digit verification code is: ${otpCode}\n\nThis code expires in 5 minutes. If you did not initiate this request, your existing registered mobile number remains protected.`,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #0f766e; margin-top: 0;">Godavari One · Super Admin Security</h2>
+        <p style="font-size: 14px; color: #374151;">A request was made to update your registered Super Admin mobile number to <strong>${nationalPhone}</strong>.</p>
+        <p style="font-size: 14px; color: #374151;">Use the verification code below to authorize this change:</p>
+        <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0f766e; background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
+          ${otpCode}
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-bottom: 0;">This code expires in 5 minutes. If you did not initiate this request, your existing account and mobile number remain completely protected.</p>
+      </div>`,
+    });
+  }
+
+  // Check if dev fallback should supply the code (e.g. dev mode)
   const isDevMode = process.env.OTP_DEV_MODE === "true" || process.env.NODE_ENV !== "production";
   const shouldExposeDevCode = isDevMode;
 
@@ -138,9 +158,23 @@ export const POST = handler(async (req: NextRequest) => {
     details: {
       targetPhone: nationalPhone,
       smsDelivered: smsResult.success,
-      smsProvider: smsResult.success ? "SMS_GATEWAY" : "DEV_FALLBACK",
+      emailDelivered: emailResult.success,
+      deliveryChannel: smsResult.success && emailResult.success ? "SMS_AND_EMAIL" : smsResult.success ? "SMS" : emailResult.success ? "EMAIL" : "DEV_FALLBACK",
     },
   });
+
+  let deliveryMessage = "";
+  if (smsResult.success && emailResult.success) {
+    deliveryMessage = `Verification code dispatched via SMS to ${nationalPhone} and emailed to ${user.email}.`;
+  } else if (smsResult.success) {
+    deliveryMessage = `Verification code dispatched via SMS to ${nationalPhone}.`;
+  } else if (emailResult.success) {
+    deliveryMessage = `Verification code dispatched to your registered administrator email (${user.email}).`;
+  } else if (isDevMode) {
+    deliveryMessage = `Verification code generated for ${nationalPhone} (Dev mode active).`;
+  } else {
+    return fail("Unable to deliver verification code. SMS provider is unconfigured and admin email is unavailable.", 502);
+  }
 
   return ok({
     ok: true,
@@ -148,9 +182,8 @@ export const POST = handler(async (req: NextRequest) => {
     phone: nationalPhone,
     ttlSeconds: OTP_CONFIG.ttlSeconds,
     smsDelivered: smsResult.success,
-    message: smsResult.success
-      ? `Verification code dispatched to ${nationalPhone}.`
-      : `Verification code generated for ${nationalPhone}.`,
+    emailDelivered: emailResult.success,
+    message: deliveryMessage,
     devCode: shouldExposeDevCode ? otpCode : undefined,
   });
 });
