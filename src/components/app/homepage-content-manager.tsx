@@ -373,7 +373,11 @@ export function HomepageContentManager() {
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error(`Server returned unexpected response (${res.status}): ${text.slice(0, 100)}`);
+        if (res.status === 401) throw new Error("Your session has expired. Please log in again.");
+        if (res.status === 403) throw new Error("Insufficient permissions. Super Admin required.");
+        if (res.status === 413) throw new Error("The selected file exceeds the maximum allowed size (5MB).");
+        if (res.status === 404) throw new Error("Upload endpoint is currently unavailable.");
+        throw new Error("Upload failed. Server returned an invalid response.");
       }
       if (!res.ok) throw new Error(data?.error || "Failed to replace image");
 
@@ -589,7 +593,11 @@ export function HomepageContentManager() {
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error(`Server returned unexpected response (status ${res.status}): ${text.slice(0, 120)}`);
+        if (res.status === 401) throw new Error("Your session has expired. Please log in again.");
+        if (res.status === 403) throw new Error("Insufficient permissions. Super Admin required.");
+        if (res.status === 413) throw new Error("The selected file exceeds the maximum allowed size (5MB).");
+        if (res.status === 404) throw new Error("Upload endpoint is currently unavailable.");
+        throw new Error("Upload failed. Server returned an invalid response.");
       }
       if (!res.ok) throw new Error(data?.error || `Upload failed with status ${res.status}`);
       if (!data?.url) throw new Error("Upload did not return an image URL");
@@ -670,7 +678,11 @@ export function HomepageContentManager() {
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error(`Server returned unexpected response (status ${res.status}): ${text.slice(0, 120)}`);
+        if (res.status === 401) throw new Error("Your session has expired. Please log in again.");
+        if (res.status === 403) throw new Error("Insufficient permissions. Super Admin required.");
+        if (res.status === 413) throw new Error("The selected file exceeds the maximum allowed size (5MB).");
+        if (res.status === 404) throw new Error("Upload endpoint is currently unavailable.");
+        throw new Error("Upload failed. Server returned an invalid response.");
       }
       if (!res.ok) throw new Error(data?.error || `Upload failed with status ${res.status}`);
       if (!data?.url) throw new Error("Upload did not return an image URL");

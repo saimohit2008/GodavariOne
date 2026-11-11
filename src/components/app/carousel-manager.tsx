@@ -297,7 +297,7 @@ export function CarouselManager() {
     if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
       toast({
         title: "Unsupported format",
-        description: "Please upload a JPEG, PNG, WebP, or GIF image.",
+        description: "This image format is not supported. Please select JPEG, PNG, WebP, or GIF.",
         variant: "destructive",
       });
       return;
@@ -306,7 +306,7 @@ export function CarouselManager() {
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "File too large",
-        description: "Image size must be 5MB or less.",
+        description: "The selected file exceeds the maximum allowed size (5MB).",
         variant: "destructive",
       });
       return;
@@ -317,26 +317,49 @@ export function CarouselManager() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/v1/carousel/upload", {
+      let res = await fetch("/api/v1/carousel/upload", {
         method: "POST",
         body: formData,
+        credentials: "same-origin",
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to upload image");
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch("/api/v1/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "same-origin",
+        });
       }
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (res.status === 401) throw new Error("Your session has expired. Please log in again.");
+        if (res.status === 403) throw new Error("Insufficient permissions. Super Admin required.");
+        if (res.status === 413) throw new Error("The selected file exceeds the maximum allowed size (5MB).");
+        if (res.status === 404) throw new Error("Upload endpoint is currently unavailable.");
+        throw new Error("Upload failed. Server returned an invalid response.");
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Upload failed with status ${res.status}`);
+      }
+
+      if (!data?.url) {
+        throw new Error("Upload did not return an image URL.");
+      }
+
       setFormImageUrl(data.url);
       toast({
-        title: "Image uploaded",
+        title: "Image uploaded successfully",
         description: "Banner image successfully stored.",
       });
     } catch (err: any) {
       toast({
         title: "Upload failed",
-        description: err.message || "Could not upload image.",
+        description: err.message || "Upload failed. Please try again.",
         variant: "destructive",
       });
     } finally {

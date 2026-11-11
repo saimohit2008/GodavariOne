@@ -8,7 +8,7 @@ import { canManageListings } from "@/lib/constants";
 // POST /api/v1/images?listingId=...&primary=true
 // multipart/form-data: files[]
 export const POST = handler(async (req: NextRequest) => {
-  const ctx = await getCurrentUser();
+  const ctx = await getCurrentUser(req);
   if (!ctx) return fail("Authentication required", 401);
   if (!canManageListings(ctx.user.role as any)) return fail("Insufficient permissions", 403);
 
@@ -54,8 +54,10 @@ export const POST = handler(async (req: NextRequest) => {
   if (makePrimary && saved.length > 0) {
     await db.listingImage.updateMany({ where: { listingId, id: { not: saved[0].id } }, data: { isPrimary: false } });
     await db.listingImage.update({ where: { id: saved[0].id }, data: { isPrimary: true } });
+    saved[0].isPrimary = true;
   } else if (existingCount === 0 && saved.length > 0) {
     await db.listingImage.update({ where: { id: saved[0].id }, data: { isPrimary: true } });
+    saved[0].isPrimary = true;
   }
 
   await audit({

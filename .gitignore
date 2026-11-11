@@ -61,13 +61,16 @@ scratch/
 
 # local uploads and test media
 /upload/
-upload/
 /public/uploads/
 public/uploads/
 /private_documents/
 private_documents/
 /download/
 download/
+
+# Explicitly ensure API routes are NEVER ignored
+!src/app/api/**/upload/
+!src/app/api/**/upload/**
 
 # internal automation and migration scripts
 /.zscripts/

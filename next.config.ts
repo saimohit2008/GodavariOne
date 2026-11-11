@@ -33,7 +33,12 @@ const nextConfig: NextConfig = {
   // Rewrites: transparently proxy /uploads/:path* to Supabase Storage in production
   // when local files do not exist in public/uploads.
   async rewrites() {
-    if (supabaseUrl && process.env.OBJECT_STORAGE_PROVIDER === "supabase") {
+    const isSupabase =
+      (process.env.OBJECT_STORAGE_PROVIDER || "").toLowerCase().trim() === "supabase" ||
+      process.env.NODE_ENV === "production" ||
+      process.env.VERCEL === "1" ||
+      process.env.VERCEL_ENV === "production";
+    if (supabaseUrl && isSupabase) {
       return [
         {
           source: "/uploads/:path*",
