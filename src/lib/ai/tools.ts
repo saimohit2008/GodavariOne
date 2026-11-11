@@ -296,3 +296,146 @@ export async function getAdminOperationalSummary(): Promise<string> {
     `- Officially Closed Ghats: ${closedGhatsCount}`,
   ].join("\n");
 }
+
+export interface BusinessListingStats {
+  total: number;
+  published: number;
+  pending?: number;
+  approved?: number;
+  draft?: number;
+  statusesIncluded: string[];
+  isAdmin: boolean;
+}
+
+export async function getBusinessListingStatsTool(userRole?: string): Promise<BusinessListingStats> {
+  const isAdmin = userRole === "SUPER_ADMIN";
+  if (isAdmin) {
+    const [total, published, pending, approved, draft] = await Promise.all([
+      db.listing.count(),
+      db.listing.count({ where: { publicationStatus: "PUBLISHED" } }),
+      db.listing.count({ where: { publicationStatus: "PENDING" } }),
+      db.listing.count({ where: { publicationStatus: "APPROVED" } }),
+      db.listing.count({ where: { publicationStatus: "DRAFT" } }),
+    ]);
+    return {
+      total,
+      published,
+      pending,
+      approved,
+      draft,
+      statusesIncluded: ["PUBLISHED", "APPROVED", "PENDING", "DRAFT"],
+      isAdmin: true,
+    };
+  }
+
+  const published = await db.listing.count({ where: { publicationStatus: "PUBLISHED" } });
+  return {
+    total: published,
+    published,
+    statusesIncluded: ["PUBLISHED"],
+    isAdmin: false,
+  };
+}
+
+export async function getCategoryCountTool(category: string): Promise<{ count: number; category: string; display: string }> {
+  const count = await db.listing.count({
+    where: { category, publicationStatus: "PUBLISHED" },
+  });
+  const displayMap: Record<string, string> = {
+    RESTAURANT: "Restaurants & Dining",
+    HOTEL: "Hotels & Lodges",
+    GHAT: "Pushkar Bathing Ghats",
+    HOSPITAL: "Emergency Hospitals",
+    TRANSPORT: "Transport & Transit Hubs",
+    TOURIST_SPOT: "Tourist Spots & Temples",
+    FREE_ACCOMMODATION: "Free Satrams & Choultries",
+    ANNADANAM: "Free Annadanam Centres",
+    CEREMONY: "Vedic Rituals & Purohits",
+  };
+  return { count, category, display: displayMap[category] || category };
+}
+
+export async function getAllCategoryCountsTool(): Promise<Array<{ category: string; display: string; count: number }>> {
+  const categories = [
+    "RESTAURANT",
+    "HOTEL",
+    "GHAT",
+    "HOSPITAL",
+    "TRANSPORT",
+    "TOURIST_SPOT",
+    "FREE_ACCOMMODATION",
+    "ANNADANAM",
+    "CEREMONY",
+  ];
+  const counts = await Promise.all(
+    categories.map(async (cat) => {
+      const res = await getCategoryCountTool(cat);
+      return { category: cat, display: res.display, count: res.count };
+    })
+  );
+  return counts;
+}
+
+export async function getPendingListingsStatsTool(userRole?: string): Promise<{ authorized: boolean; count?: number }> {
+  if (userRole !== "SUPER_ADMIN" && userRole !== "BOOKING_REVIEWER") {
+    return { authorized: false };
+  }
+  const count = await db.listing.count({
+    where: { publicationStatus: "PENDING" },
+  });
+  return { authorized: true, count };
+}
+
+export async function getBusinessOwnersStatsTool(userRole?: string): Promise<{ authorized: boolean; count?: number }> {
+  if (userRole !== "SUPER_ADMIN") {
+    return { authorized: false };
+  }
+  const count = await db.user.count({
+    where: { role: "BUSINESS_OWNER", status: "ACTIVE" },
+  });
+  return { authorized: true, count };
+}
+
+export async function getPendingBookingsStatsTool(userRole?: string): Promise<{
+  authorized: boolean;
+  total?: number;
+  hotel?: number;
+  restaurant?: number;
+  ceremony?: number;
+}> {
+  if (userRole !== "SUPER_ADMIN" && userRole !== "BOOKING_REVIEWER") {
+    return { authorized: false };
+  }
+  const [hotel, restaurant, ceremony] = await Promise.all([
+    db.hotelBooking.count({ where: { status: "PENDING" } }),
+    db.restaurantBooking.count({ where: { status: "PENDING" } }),
+    db.ceremonyBooking.count({ where: { status: "PENDING" } }),
+  ]);
+  return {
+    authorized: true,
+    total: hotel + restaurant + ceremony,
+    hotel,
+    restaurant,
+    ceremony,
+  };
+}
+
+export async function getOvercrowdedGhatsTool(): Promise<Array<{ id: string; name: string; crowdStatus: string; town?: string | null }>> {
+  const ghats = await db.listing.findMany({
+    where: {
+      category: "GHAT",
+      publicationStatus: "PUBLISHED",
+      ghatDetails: {
+        currentCrowdStatus: { in: ["OVERCROWDED", "CROWDED", "EMERGENCY"] },
+      },
+    },
+    include: { ghatDetails: true },
+  });
+
+  return ghats.map((g) => ({
+    id: g.id,
+    name: g.name,
+    crowdStatus: g.ghatDetails?.currentCrowdStatus || "CROWDED",
+    town: g.town,
+  }));
+}

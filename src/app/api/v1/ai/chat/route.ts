@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     const response = await processUserMessage(message, {
       conversationId: body.conversationId,
       language: body.language,
+      messages: body.messages,
       context: body.context,
       userId: userSession?.user.id,
       userRole: userSession?.user.role,
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     console.error("[AI Chat API Error]", error);
     return NextResponse.json(
       {
-        reply: "Namaskaram! We experienced a temporary issue processing your request. Please try again or select from the directory menu.",
+        reply: "We experienced a temporary issue processing your request. Please try again or select from the directory menu.",
         conversationId: "conv_fallback",
         language: "en",
         citations: [],

@@ -119,6 +119,10 @@ export function AiAssistantView() {
           message: text,
           conversationId,
           language: lang,
+          messages: [...messages, userMsg].map((m) => ({
+            role: m.sender === "user" ? "user" : "assistant",
+            content: m.text,
+          })),
         }),
       });
 

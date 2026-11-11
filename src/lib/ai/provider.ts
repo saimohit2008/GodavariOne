@@ -16,12 +16,25 @@ export class GeminiProvider implements AIProvider {
   async generateCompletion(options: AICompletionOptions): Promise<AICompletionResult> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
 
-    const contents = [
-      {
-        role: "user",
-        parts: [{ text: `${options.systemPrompt}\n\nUser Question:\n${options.messages[options.messages.length - 1]?.content || ""}` }],
-      },
-    ];
+    // Multi-turn conversation history for Gemini API
+    const historyParts = (options.messages || []).slice(-8).map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+
+    if (historyParts.length > 0 && historyParts[0].role === "user") {
+      historyParts[0].parts[0].text = `${options.systemPrompt}\n\n${historyParts[0].parts[0].text}`;
+    }
+
+    const contents =
+      historyParts.length > 0
+        ? historyParts
+        : [
+            {
+              role: "user",
+              parts: [{ text: `${options.systemPrompt}\n\nUser Question:\n${options.messages[options.messages.length - 1]?.content || ""}` }],
+            },
+          ];
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -143,13 +156,22 @@ export class MockAIProvider implements AIProvider {
   async generateCompletion(options: AICompletionOptions): Promise<AICompletionResult> {
     const lastUserMessage = options.messages[options.messages.length - 1]?.content || "";
     const isTelugu = /[\u0C00-\u0C7F]/.test(lastUserMessage) || options.systemPrompt.includes("Language: te");
+    const isFollowUp = (options.messages || []).length > 1;
+    const isPureGreeting = /^(hi|hello|hey|namaskaram|namaste|నమస్కారం|హలో)[\s!.]*$/i.test(lastUserMessage.trim());
 
     let text = "";
 
-    if (isTelugu) {
-      text = `నమస్కారం! గోదావరి వన్ డిజిటల్ అసిస్టెంట్ మీకు స్వాగతం పలుకుతోంది. మీ అభ్యర్థనకు సంబంధించిన అధికారిక సమాచారం క్రింద ఇవ్వబడింది. మేము అందించిన లిస్టింగ్‌లు మరియు ఘాట్ సమయాలను గమనించండి.`;
+    if (isPureGreeting && !isFollowUp) {
+      text = isTelugu
+        ? `నమస్కారం! గోదావరి వన్ డిజిటల్ అసిస్టెంట్‌కి స్వాగతం. పవిత్ర పుష్కరాల ఘాట్‌లు, వసతి, అన్నదానం మరియు సేవల సమాచారం కోసం నన్ను అడగండి.`
+        : `Namaskaram! Welcome to Godavari One. How can I assist you today with ghats, accommodation, dining, or purohits?`;
     } else {
-      text = `Namaskaram! Welcome to Godavari One. Here is the verified official information regarding your query based on our active database records and Pushkaralu guidelines.`;
+      // Direct factual response without repetitive greeting
+      if (isTelugu) {
+        text = `మీ అభ్యర్థనకు సంబంధించిన అధికారిక సమాచారం క్రింద ఇవ్వబడింది. మేము అందించిన వివరాలు మరియు మార్గదర్శకాలను పరిశీలించండి.`;
+      } else {
+        text = `Here is the verified official information regarding your query based on our active database records and Pushkaralu guidelines.`;
+      }
     }
 
     return {

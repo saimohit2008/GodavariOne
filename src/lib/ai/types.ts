@@ -38,6 +38,7 @@ export interface AIChatRequest {
   message: string;
   conversationId?: string;
   language?: SupportedLanguage;
+  messages?: AIChatMessage[];
   context?: {
     currentView?: string;
     listingId?: string;
