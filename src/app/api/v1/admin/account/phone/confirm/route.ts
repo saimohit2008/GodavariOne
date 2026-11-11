@@ -9,7 +9,7 @@ import { z } from "zod";
 // Step 2 of Super Admin mobile number change:
 // Validates current password, verifies 6-digit OTP challenge, and updates mobile number.
 export const POST = handler(async (req: NextRequest) => {
-  const ctx = await getCurrentUser();
+  const ctx = await getCurrentUser(req);
   if (!ctx) return fail("Authentication required", 401);
   if (ctx.user.role !== "SUPER_ADMIN") return fail("Insufficient permissions", 403);
 
@@ -75,23 +75,31 @@ export const POST = handler(async (req: NextRequest) => {
     return fail("This mobile number is already registered to another account.", 409);
   }
 
-  // Find latest active, unconsumed, unexpired OTP challenge for this user and new phone
+  // Find latest OTP challenge for this user, phone, and purpose
   const challenge = await db.otpChallenge.findFirst({
     where: {
       userId: user.id,
       phone: nationalPhone,
       purpose: "CHANGE_PHONE",
-      consumed: false,
-      expiresAt: { gt: new Date() },
     },
     orderBy: { createdAt: "desc" },
   });
 
   if (!challenge) {
-    return fail("No active verification code found or the code has expired. Please request a new verification code.", 400);
+    return fail("No verification request found for this mobile number. Please request a verification code first.", 400);
   }
 
-  // Enforce maximum attempts
+  // Check if already consumed (replay protection)
+  if (challenge.consumed) {
+    return fail("This verification code has already been used. Please request a new verification code.", 400);
+  }
+
+  // Check if expired (>15 minutes TTL)
+  if (new Date() > challenge.expiresAt) {
+    return fail("Verification code has expired. Please request a new verification code.", 400);
+  }
+
+  // Enforce maximum attempts (brute force protection)
   if (challenge.attempts >= OTP_CONFIG.maxAttempts) {
     await db.otpChallenge.update({
       where: { id: challenge.id },
@@ -100,31 +108,35 @@ export const POST = handler(async (req: NextRequest) => {
     return fail("Maximum verification attempts exceeded. Please request a new verification code.", 429);
   }
 
-  // Verify OTP code
+  // Verify OTP code with timing-safe hash comparison
   const isCodeValid = verifyOtp(otpCode.trim(), challenge.codeHash);
   if (!isCodeValid) {
+    const updatedAttempts = challenge.attempts + 1;
     await db.otpChallenge.update({
       where: { id: challenge.id },
-      data: { attempts: { increment: 1 } },
+      data: {
+        attempts: updatedAttempts,
+        consumed: updatedAttempts >= OTP_CONFIG.maxAttempts ? true : challenge.consumed,
+      },
     });
     return fail("Invalid verification code. Please check the code and try again.", 400);
   }
 
-  // Mark challenge as consumed
-  await db.otpChallenge.update({
-    where: { id: challenge.id },
-    data: { consumed: true },
-  });
-
-  // Apply change to the existing user record
+  // Atomically mark challenge consumed and update user's phone
   const oldPhone = user.phone;
-  const updatedUser = await db.user.update({
-    where: { id: user.id },
-    data: {
-      phone: nationalPhone,
-      phoneVerified: true,
-    },
-  });
+  const [, updatedUser] = await db.$transaction([
+    db.otpChallenge.update({
+      where: { id: challenge.id },
+      data: { consumed: true },
+    }),
+    db.user.update({
+      where: { id: user.id },
+      data: {
+        phone: nationalPhone,
+        phoneVerified: true,
+      },
+    }),
+  ]);
 
   // Record audit log
   await audit({

@@ -29,6 +29,7 @@ import {
   QrCode,
   Copy,
   Key,
+  Mail,
 } from "lucide-react";
 import {
   Dialog,
@@ -91,6 +92,18 @@ export function AccountSettingsTab() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneSuccess, setPhoneSuccess] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Administrator Email Address state
+  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState("");
+  const [showCurrentPasswordForEmail, setShowCurrentPasswordForEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailStep, setEmailStep] = useState<1 | 2>(1);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [emailDevCode, setEmailDevCode] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailCooldown, setEmailCooldown] = useState(0);
 
   // MFA state
   const [mfaData, setMfaData] = useState<{ mfaEnabled: boolean; remainingRecoveryCodes: number } | null>(null);
@@ -222,7 +235,7 @@ export function AccountSettingsTab() {
     loadMfaStatus();
   }, []);
 
-  // Cooldown timer for OTP resend
+  // Cooldown timer for OTP resend (Phone)
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -230,6 +243,15 @@ export function AccountSettingsTab() {
     }, 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // Cooldown timer for OTP resend (Email)
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setEmailCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailCooldown]);
 
   // Handle Password Update
   async function handlePasswordSubmit(e: React.FormEvent) {
@@ -294,6 +316,13 @@ export function AccountSettingsTab() {
     setPhoneSuccess(null);
     setDevCode(null);
 
+    if (!account?.email || !account?.emailVerified) {
+      setPhoneError(
+        "A verified administrator recovery email is required to authorize mobile number changes. Please configure and verify your email address in the Administrator Email Address section below first."
+      );
+      return;
+    }
+
     if (!currentPasswordForPhone) {
       setPhoneError("Current password is required to verify your identity.");
       return;
@@ -353,7 +382,7 @@ export function AccountSettingsTab() {
     setPhoneSuccess(null);
 
     if (!otpCode || otpCode.trim().length < 4) {
-      setPhoneError("Please enter the verification code sent to the new mobile number.");
+      setPhoneError("Please enter the verification code sent to your verified administrator email.");
       return;
     }
 
@@ -406,6 +435,123 @@ export function AccountSettingsTab() {
     }
   }
 
+  // Handle Email Verification — Step 1: Request OTP
+  async function handleRequestEmailVerification(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailSuccess(null);
+    setEmailDevCode(null);
+
+    if (!currentPasswordForEmail) {
+      setEmailError("Current password is required to request email verification.");
+      return;
+    }
+
+    const cleanEmail = newEmail.toLowerCase().trim();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+
+    if (account?.email && account.email.toLowerCase().trim() === cleanEmail) {
+      setEmailError("The new email address cannot be identical to your current email address.");
+      return;
+    }
+
+    setEmailLoading(true);
+    try {
+      const res = await api.post<{
+        ok: boolean;
+        message: string;
+        email: string;
+        ttlSeconds: number;
+        devCode?: string;
+      }>("/admin/account/email/request", {
+        currentPassword: currentPasswordForEmail,
+        newEmail: cleanEmail,
+      });
+
+      setEmailStep(2);
+      setEmailCooldown(60);
+      if (res.devCode) {
+        setEmailDevCode(res.devCode);
+      }
+      toast({
+        title: "Verification Code Sent",
+        description: res.message || `Code dispatched to ${cleanEmail}.`,
+      });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to initiate email verification.";
+      setEmailError(msg);
+      toast({
+        title: "Request Failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  // Handle Email Verification — Step 2: Confirm OTP & Bind
+  async function handleConfirmEmailVerification(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    if (!emailOtpCode || emailOtpCode.trim().length < 4) {
+      setEmailError("Please enter the verification code sent to your email.");
+      return;
+    }
+
+    const cleanEmail = newEmail.toLowerCase().trim();
+
+    setEmailLoading(true);
+    try {
+      const res = await api.post<{
+        ok: boolean;
+        message: string;
+        user: AccountData;
+      }>("/admin/account/email/confirm", {
+        currentPassword: currentPasswordForEmail,
+        newEmail: cleanEmail,
+        otpCode: emailOtpCode.trim(),
+      });
+
+      setEmailSuccess(res.message || `Email successfully verified and bound to ${cleanEmail}.`);
+      setEmailStep(1);
+      setEmailOtpCode("");
+      setNewEmail("");
+      setCurrentPasswordForEmail("");
+      setEmailDevCode(null);
+
+      // Update active user in Zustand store
+      if (user) {
+        setUser({
+          ...user,
+          email: cleanEmail,
+        });
+      }
+
+      toast({
+        title: "Email Address Bound",
+        description: `Your verified administrator email is now ${cleanEmail}.`,
+      });
+
+      loadAccountData();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to verify code.";
+      setEmailError(msg);
+      toast({
+        title: "Verification Failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
   const currentDisplayPhone = account?.phone || user?.phone || "9999999999";
   const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword;
   const passwordsMismatch = newPassword && confirmPassword && newPassword !== confirmPassword;
@@ -437,7 +583,7 @@ export function AccountSettingsTab() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t text-sm">
+        <CardContent className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-2 border-t text-sm">
           <div className="p-3 rounded-lg bg-muted/40">
             <span className="text-xs text-muted-foreground block mb-0.5">Administrator Name</span>
             <span className="font-semibold">{account?.name || user?.name || "Super Admin"}</span>
@@ -448,6 +594,16 @@ export function AccountSettingsTab() {
               <Phone className="size-3.5 text-primary" />
               <span>{currentDisplayPhone}</span>
               <span title="Verified"><Check className="size-3.5 text-emerald-600 ml-1" /></span>
+            </div>
+          </div>
+          <div className="p-3 rounded-lg bg-muted/40">
+            <span className="text-xs text-muted-foreground block mb-0.5">Administrator Email</span>
+            <div className="flex items-center gap-1.5 font-semibold text-xs truncate">
+              <Mail className="size-3.5 text-primary shrink-0" />
+              <span className="truncate">{account?.email || "Not Configured"}</span>
+              {account?.email && account?.emailVerified ? (
+                <span title="Verified"><Check className="size-3.5 text-emerald-600 ml-0.5 shrink-0" /></span>
+              ) : null}
             </div>
           </div>
           <div className="p-3 rounded-lg bg-muted/40">
@@ -677,6 +833,15 @@ export function AccountSettingsTab() {
               {phoneStep === 1 ? (
                 /* Step 1: Request OTP with Current Password Confirmation */
                 <form onSubmit={handleRequestPhoneVerification} className="space-y-4">
+                  {(!account?.email || !account?.emailVerified) && (
+                    <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+                      <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+                      <AlertTitle>Verified Recovery Email Required</AlertTitle>
+                      <AlertDescription className="text-xs text-amber-800 dark:text-amber-300">
+                        To authorize mobile number changes securely via email OTP, a verified administrator recovery email is required. Please add and verify your email in the Administrator Email Address card below first.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="p-3 rounded-lg bg-muted/40 border text-xs text-muted-foreground flex items-center justify-between">
                     <span>Current Registered Mobile:</span>
                     <span className="font-bold font-mono text-foreground">{currentDisplayPhone}</span>
@@ -726,12 +891,16 @@ export function AccountSettingsTab() {
                       />
                     </div>
                     <span className="text-[11px] text-muted-foreground block">
-                      A 6-digit verification code will be dispatched to this number.
+                      A 6-digit verification code will be dispatched to your verified administrator email to authorize this change.
                     </span>
                   </div>
 
                   <div className="pt-2 flex justify-end">
-                    <Button type="submit" disabled={phoneLoading} className="shadow-sm">
+                    <Button
+                      type="submit"
+                      disabled={phoneLoading || !account?.email || !account?.emailVerified}
+                      className="shadow-sm"
+                    >
                       {phoneLoading ? (
                         <>
                           <RefreshCw className="size-4 mr-2 animate-spin" /> Verifying...
@@ -753,7 +922,7 @@ export function AccountSettingsTab() {
                       <span className="font-bold font-mono text-primary">{newPhone}</span>
                     </div>
                     <p className="text-[11px]">
-                      Enter the 6-digit verification code dispatched to complete the mobile number update.
+                      Enter the 6-digit verification code dispatched to your verified administrator email to complete the mobile number update.
                     </p>
                   </div>
 
@@ -833,6 +1002,229 @@ export function AccountSettingsTab() {
           </CardFooter>
         </Card>
       </div>
+
+      {/* ==================================================================== */}
+      {/* SECTION 2.5: ADMINISTRATOR VERIFIED EMAIL ADDRESS */}
+      {/* ==================================================================== */}
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="size-9 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 grid place-items-center shrink-0">
+                <Mail className="size-5" />
+              </span>
+              <div>
+                <CardTitle className="text-lg">Administrator Email Address</CardTitle>
+                <CardDescription>
+                  Associate and verify your personal email address for security notifications and dual-channel OTP recovery.
+                </CardDescription>
+              </div>
+            </div>
+            {account?.email ? (
+              account.emailVerified ? (
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 text-xs flex items-center gap-1">
+                  <Check className="size-3" /> Verified Address
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 text-xs flex items-center gap-1">
+                  <AlertTriangle className="size-3" /> Unverified
+                </Badge>
+              )
+            ) : (
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 text-xs flex items-center gap-1">
+                <AlertTriangle className="size-3" /> Email Required
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {emailSuccess && (
+            <Alert className="mb-4 border-emerald-600/30 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200">
+              <CheckCircle2 className="size-4 text-emerald-600" />
+              <AlertTitle>Email Address Updated</AlertTitle>
+              <AlertDescription className="text-xs text-emerald-800 dark:text-emerald-300">
+                {emailSuccess}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {emailError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription className="text-xs">{emailError}</AlertDescription>
+            </Alert>
+          )}
+
+          {emailStep === 1 ? (
+            /* Step 1: Request OTP with Current Password Confirmation */
+            <form onSubmit={handleRequestEmailVerification} className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/40 border text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span>Current Registered Email:</span>
+                <span className="font-semibold text-foreground">
+                  {account?.email ? (
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="size-3.5 text-primary" /> {account.email}
+                      {account.emailVerified && <Check className="size-3 text-emerald-600" />}
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-normal">
+                      No email registered. Adding a verified email unlocks dual-channel mobile change recovery.
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="email-current-password">Current Password Confirmation *</Label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <Input
+                      id="email-current-password"
+                      type={showCurrentPasswordForEmail ? "text" : "password"}
+                      value={currentPasswordForEmail}
+                      onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
+                      placeholder="Confirm with current password"
+                      className="pl-9 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPasswordForEmail(!showCurrentPasswordForEmail)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      tabIndex={-1}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showCurrentPasswordForEmail ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground block">
+                    Password re-authentication is mandatory to authorize email binding.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="new-admin-email">Personal Email Address *</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <Input
+                      id="new-admin-email"
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="e.g. saimohitangara@gmail.com"
+                      className="pl-9"
+                      required
+                    />
+                  </div>
+                  <span className="text-[11px] text-muted-foreground block">
+                    A 6-digit verification code will be dispatched to this inbox via Resend.
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button type="submit" disabled={emailLoading} className="shadow-sm">
+                  {emailLoading ? (
+                    <>
+                      <RefreshCw className="size-4 mr-2 animate-spin" /> Verifying...
+                    </>
+                  ) : (
+                    <>
+                      Send Email Verification Code <ArrowRight className="size-4 ml-1.5" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            /* Step 2: Confirm OTP */
+            <form onSubmit={handleConfirmEmailVerification} className="space-y-4">
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center justify-between">
+                  <span>Target Email Address:</span>
+                  <span className="font-bold text-primary">{newEmail}</span>
+                </div>
+                <p className="text-[11px]">
+                  Enter the 6-digit verification code sent to your inbox to complete the email verification and account binding.
+                </p>
+              </div>
+
+              {emailDevCode && (
+                <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                  <span className="font-medium">Verification Code (Dev Mode):</span>
+                  <code className="px-2 py-0.5 rounded bg-amber-500/20 font-bold font-mono tracking-widest text-sm">
+                    {emailDevCode}
+                  </code>
+                </div>
+              )}
+
+              <div className="space-y-1.5 max-w-sm">
+                <Label htmlFor="email-otp-input">6-Digit Verification Code *</Label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="email-otp-input"
+                    type="text"
+                    value={emailOtpCode}
+                    onChange={(e) => setEmailOtpCode(e.target.value)}
+                    placeholder="000000"
+                    className="pl-9 font-mono tracking-widest text-base"
+                    maxLength={8}
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEmailStep(1);
+                    setEmailOtpCode("");
+                    setEmailError(null);
+                  }}
+                  disabled={emailLoading}
+                >
+                  ← Back
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRequestEmailVerification}
+                    disabled={emailLoading || emailCooldown > 0}
+                  >
+                    {emailCooldown > 0 ? `Resend (${emailCooldown}s)` : "Resend Code"}
+                  </Button>
+
+                  <Button type="submit" disabled={emailLoading} className="shadow-sm">
+                    {emailLoading ? (
+                      <>
+                        <RefreshCw className="size-4 mr-2 animate-spin" /> Verifying...
+                      </>
+                    ) : (
+                      <>
+                        Confirm & Bind Email Address <Check className="size-4 ml-1.5" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+        </CardContent>
+        <CardFooter className="bg-muted/20 border-t py-2.5 text-xs text-muted-foreground flex items-center gap-1.5">
+          <ShieldAlert className="size-3.5 shrink-0" />
+          <span>This verified email is used for dual-channel OTP delivery when updating mobile numbers or recovering credentials.</span>
+        </CardFooter>
+      </Card>
 
       {/* ==================================================================== */}
       {/* SECTION 2.5: SUPER ADMIN MULTI-FACTOR AUTHENTICATION (MFA / TOTP) */}
@@ -1188,7 +1580,9 @@ export function AccountSettingsTab() {
             <div className="divide-y text-xs">
               {securityLogs.map((log) => {
                 const actionBadgeColor =
-                  log.action === "ADMIN_PASSWORD_CHANGED" || log.action === "ADMIN_PHONE_CHANGED"
+                  log.action === "ADMIN_PASSWORD_CHANGED" ||
+                  log.action === "ADMIN_PHONE_CHANGED" ||
+                  log.action === "ADMIN_EMAIL_BOUND"
                     ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
                     : log.action.includes("FAILED")
                     ? "bg-destructive/10 text-destructive border-destructive/20"
