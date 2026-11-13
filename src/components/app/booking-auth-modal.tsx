@@ -559,9 +559,21 @@ export function BookingAuthModal() {
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="booking-login-password" className="text-xs font-medium">
-                  {t(lang, "password")}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="booking-login-password" className="text-xs font-medium">
+                    {t(lang, "password")}
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeBookingAuthModal();
+                      navigate({ name: "forgot-password" });
+                    }}
+                    className="text-xs text-teal-700 dark:text-teal-400 hover:underline font-medium cursor-pointer"
+                  >
+                    {t(lang, "forgotPassword")}
+                  </button>
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <Input

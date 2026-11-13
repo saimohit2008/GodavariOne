@@ -10,6 +10,7 @@ import { ListingDetailView } from "@/components/app/views/listing-detail-view";
 import { ListingFormView } from "@/components/app/views/listing-form-view";
 import { LoginView } from "@/components/app/views/login-view";
 import { RegisterView } from "@/components/app/views/register-view";
+import { ForgotPasswordView } from "@/components/app/views/forgot-password-view";
 import { AdminLoginView } from "@/components/app/views/admin-login-view";
 import { AdminDashboard } from "@/components/app/views/admin-dashboard";
 import { OwnerDashboard, GhatReporterView, GhatSupervisorView, ReviewerDashboard, EditorDashboard, VisitorDashboard } from "@/components/app/views/role-dashboards";
@@ -147,6 +148,7 @@ function renderView(view: ReturnType<typeof useApp.getState>["view"], user: Retu
     case "listing-form": return <ListingFormView id={view.id} initialCategory={view.category} />;
     case "login": return <LoginView />;
     case "register": return <RegisterView />;
+    case "forgot-password": return <ForgotPasswordView initialEmail={view.email} />;
     case "admin-login": return <AdminLoginView />;
     case "admin": return <AdminDashboard tab={view.tab} />;
     case "bookings": return <BookingsView />;

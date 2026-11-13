@@ -27,6 +27,7 @@ export type View =
   | { name: "purohit-dashboard" }
   | { name: "ceremonies"; category?: string; purohitId?: string }
   | { name: "carousel-detail"; id: string }
+  | { name: "forgot-password"; email?: string }
   | { name: "ai-assistant" };
 
 export type AdminTab =
@@ -85,6 +86,9 @@ export function viewToUrl(view: View): string {
   if ("purohitId" in view && view.purohitId) {
     params.set("purohitId", view.purohitId);
   }
+  if ("email" in view && view.email) {
+    params.set("email", view.email);
+  }
   return `/?${params.toString()}`;
 }
 
@@ -125,6 +129,8 @@ export function urlToView(searchStr: string): View | null {
       return { name: "login" };
     case "register":
       return { name: "register" };
+    case "forgot-password":
+      return { name: "forgot-password", email: params.get("email") || undefined };
     case "admin-login":
       return { name: "admin-login" };
     case "admin":

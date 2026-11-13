@@ -310,9 +310,18 @@ export function LoginView() {
 
               {/* Password Field with Show/Hide Toggle */}
               <div>
-                <Label htmlFor="login-password" className="text-sm font-medium">
-                  {t(lang, "password")}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="login-password" className="text-sm font-medium">
+                    {t(lang, "password")}
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => navigate({ name: "forgot-password" })}
+                    className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    {t(lang, "forgotPassword")}
+                  </button>
+                </div>
                 <div className="relative mt-1">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <Input
