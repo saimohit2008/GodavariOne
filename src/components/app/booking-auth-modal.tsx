@@ -32,6 +32,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { GoogleIcon } from "./views/login-view";
 
 export function BookingAuthModal() {
   const {
@@ -287,6 +288,41 @@ export function BookingAuthModal() {
               </p>
             </div>
           )}
+
+          {/* Quick Google Sign-In */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full font-medium flex items-center justify-center gap-2 h-9 text-xs border-border/80 hover:bg-muted/80 shadow-xs"
+            onClick={() => {
+              if (bookingAuthModal.context) {
+                try {
+                  sessionStorage.setItem(
+                    "godavari_pending_booking",
+                    JSON.stringify({
+                      type: bookingAuthModal.context.type,
+                      data: bookingAuthModal.context.data,
+                      returnView: { name: "home" },
+                    })
+                  );
+                } catch {}
+              }
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+              window.location.href = `/api/v1/auth/google/initiate?returnUrl=${encodeURIComponent(window.location.pathname)}`;
+            }}
+          >
+            <GoogleIcon className="size-3.5" />
+            <span>Continue with Google</span>
+          </Button>
+
+          <div className="relative my-1">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/50" />
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase">
+              <span className="bg-background px-2 text-muted-foreground font-medium">Or choose login method</span>
+            </div>
+          </div>
 
           {/* Tab Switcher */}
           <div className="flex gap-1 p-1 bg-muted rounded-lg text-xs font-medium">

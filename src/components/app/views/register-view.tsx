@@ -10,10 +10,37 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Waves, Phone, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, User, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Waves,
+  Phone,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+  User,
+  Loader2,
+  ShieldCheck,
+  Check,
+  Radio,
+} from "lucide-react";
+import { SUPPORTED_COUNTRIES, DEFAULT_COUNTRY, CountryInfo } from "@/lib/country-data";
+import { GoogleIcon } from "./login-view";
+
+interface PhoneValidationState {
+  isValidated: boolean;
+  isAcceptable: boolean;
+  carrierName: string | null;
+  lineType: string;
+  allocationStatus: string;
+  rejectionReason?: string;
+  provider: string;
+}
 
 export function RegisterView() {
   const { lang, navigate, setUser } = useApp();
+  const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(DEFAULT_COUNTRY);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -21,13 +48,87 @@ export function RegisterView() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDuplicateAccount, setIsDuplicateAccount] = useState(false);
+
+  // External Phone Number Intelligence state
+  const [validatingPhone, setValidatingPhone] = useState(false);
+  const [phoneValidation, setPhoneValidation] = useState<PhoneValidationState | null>(null);
 
   // Client-side quick validation checks
   const passwordsMatch = !confirmPassword || password === confirmPassword;
   const isPasswordLongEnough = password.length >= 8;
   const hasLetterAndNumber = /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
+
+  function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    const returnUrl = encodeURIComponent(window.location.pathname);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `/api/v1/auth/google/initiate?returnUrl=${returnUrl}`;
+  }
+
+  // Validate phone number using external telephone intelligence (NO SMS OTP)
+  async function validatePhoneNumber() {
+    const cleanPhone = phone.trim();
+    if (!cleanPhone) {
+      toast({ title: "Enter Phone Number", description: "Please enter a mobile number first to validate.", variant: "destructive" });
+      return;
+    }
+
+    setValidatingPhone(true);
+    setPhoneValidation(null);
+    setErrorMessage(null);
+
+    try {
+      const res = await api.post<{ ok: boolean; data: any }>("/auth/phone/validate", {
+        phone: cleanPhone,
+        countryCode: selectedCountry.code,
+      });
+
+      const data = res.data;
+      const isAcceptable = Boolean(data.isAcceptableForRegistration);
+
+      setPhoneValidation({
+        isValidated: true,
+        isAcceptable,
+        carrierName: data.carrierName,
+        lineType: data.lineType,
+        allocationStatus: data.allocationStatus,
+        rejectionReason: data.rejectionReason,
+        provider: data.provider,
+      });
+
+      if (isAcceptable) {
+        toast({
+          title: "Mobile Number Validated",
+          description: `${data.carrierName ? `${data.carrierName} · ` : ""}Allocated ${data.lineType.toLowerCase()} number. (No SMS OTP required)`,
+        });
+      } else {
+        toast({
+          title: "Number Check Failed",
+          description: data.rejectionReason || "This telephone number is not accepted for registration.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Validation Inconclusive",
+        description: "External provider temporarily unavailable. Structural fallback applied.",
+      });
+      // Graceful resilience: allow proceeding with structural validation
+      setPhoneValidation({
+        isValidated: true,
+        isAcceptable: true,
+        carrierName: null,
+        lineType: "MOBILE",
+        allocationStatus: "UNKNOWN",
+        provider: "fallback",
+      });
+    } finally {
+      setValidatingPhone(false);
+    }
+  }
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -40,9 +141,8 @@ export function RegisterView() {
       return;
     }
 
-    const digitsOnly = cleanPhone.replace(/\D/g, "");
-    if (digitsOnly.length < 10) {
-      setErrorMessage("Please enter a valid mobile number with at least 10 digits.");
+    if (phoneValidation && !phoneValidation.isAcceptable) {
+      setErrorMessage(phoneValidation.rejectionReason || "Please enter a valid mobile number.");
       return;
     }
 
@@ -70,6 +170,7 @@ export function RegisterView() {
     try {
       const res = await api.post<any>("/auth/register", {
         phone: cleanPhone,
+        countryCode: selectedCountry.code,
         password,
         confirmPassword,
         name: name.trim() || undefined,
@@ -127,10 +228,32 @@ export function RegisterView() {
           <CardDescription className="text-sm">
             {lang === "te"
               ? "గోదావరి పుష్కరాలు 2027 డిజిటల్ ప్లాట్‌ఫారమ్‌లో నమోదు చేసుకోండి"
-              : "Register with your mobile number to access all digital services"}
+              : "Register to access divine pilgrimages, bookings, and digital services"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Option 1: Continue with Google */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full font-medium flex items-center justify-center gap-2.5 h-10 border-border/80 hover:bg-muted/80 transition-colors shadow-xs"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+          >
+            {googleLoading ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <GoogleIcon className="size-4" />}
+            <span>Continue with Google</span>
+          </Button>
+
+          {/* Divider */}
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/60" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground font-medium">Or register with mobile</span>
+            </div>
+          </div>
+
           {errorMessage && (
             <Alert variant={isDuplicateAccount ? "default" : "destructive"} className={isDuplicateAccount ? "border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800" : ""}>
               <AlertCircle className="size-4" />
@@ -154,31 +277,104 @@ export function RegisterView() {
           )}
 
           <form onSubmit={handleRegister} className="space-y-4">
-            {/* Mobile Number Field */}
+            {/* International Country Selector & Mobile Number */}
             <div>
-              <Label htmlFor="register-phone" className="text-sm font-medium">
-                {t(lang, "mobileNumber")} <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative mt-1">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  id="register-phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    if (errorMessage) setErrorMessage(null);
-                  }}
-                  placeholder="9876543210 or +91 98765 43210"
-                  className="pl-9"
-                  autoComplete="tel"
-                  required
-                />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="register-phone" className="text-sm font-medium">
+                  {t(lang, "mobileNumber")} <span className="text-destructive">*</span>
+                </Label>
+                <button
+                  type="button"
+                  onClick={validatePhoneNumber}
+                  disabled={validatingPhone || !phone.trim()}
+                  className="text-xs text-primary hover:underline font-semibold cursor-pointer disabled:text-muted-foreground flex items-center gap-1"
+                >
+                  {validatingPhone ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      Checking...
+                    </>
+                  ) : phoneValidation?.isAcceptable ? (
+                    <>
+                      <Check className="size-3 text-emerald-600" />
+                      Validated
+                    </>
+                  ) : (
+                    "Validate Number"
+                  )}
+                </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+
+              <div className="flex gap-2 mt-1">
+                <div className="relative w-[130px] shrink-0">
+                  <select
+                    aria-label="Country calling code"
+                    className="w-full h-9 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                    value={selectedCountry.code}
+                    onChange={(e) => {
+                      const found = SUPPORTED_COUNTRIES.find((c) => c.code === e.target.value);
+                      if (found) {
+                        setSelectedCountry(found);
+                        setPhoneValidation(null);
+                      }
+                    }}
+                  >
+                    {SUPPORTED_COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.callingCode} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative flex-1">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="register-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (errorMessage) setErrorMessage(null);
+                      if (phoneValidation) setPhoneValidation(null);
+                    }}
+                    placeholder={selectedCountry.placeholder}
+                    className={`pl-9 h-9 ${phoneValidation?.isValidated && !phoneValidation.isAcceptable ? "border-destructive" : phoneValidation?.isAcceptable ? "border-emerald-500" : ""}`}
+                    autoComplete="tel"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Number Intelligence Status Feedback */}
+              {phoneValidation && (
+                <div className="mt-2 text-xs">
+                  {phoneValidation.isAcceptable ? (
+                    <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
+                        <span>
+                          {phoneValidation.carrierName ? `${phoneValidation.carrierName} · ` : ""}
+                          Valid {phoneValidation.lineType.toLowerCase()} number
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] bg-background border-emerald-300 text-emerald-700 dark:text-emerald-300 py-0 h-4">
+                        Allocated
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive flex items-start gap-1.5">
+                      <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
+                      <span>{phoneValidation.rejectionReason || "Invalid or unallocated telephone number."}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {lang === "te"
-                  ? "10-అంకెల భారతీయ మొబైల్ లేదా దేశం కోడ్‌తో కూడిన అంతర్జాతీయ నంబర్"
-                  : "Standard 10-digit mobile number, or include country code (e.g. +91 / +1)"}
+                  ? "అంతర్జాతీయ నంబర్ ఇంటెలిజెన్స్ ద్వారా తనిఖీ చేయబడుతుంది (SMS OTP అవసరం లేదు)"
+                  : "Validated via external telephone intelligence without SMS OTP"}
               </p>
             </div>
 
@@ -195,7 +391,7 @@ export function RegisterView() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Rama Rao"
-                  className="pl-9"
+                  className="pl-9 h-9"
                   autoComplete="name"
                 />
               </div>
@@ -216,7 +412,7 @@ export function RegisterView() {
                     setPassword(e.target.value);
                     if (errorMessage) setErrorMessage(null);
                   }}
-                  className="pl-9 pr-10"
+                  className="pl-9 pr-10 h-9"
                   autoComplete="new-password"
                   required
                 />
@@ -249,7 +445,7 @@ export function RegisterView() {
                     setConfirmPassword(e.target.value);
                     if (errorMessage) setErrorMessage(null);
                   }}
-                  className={`pl-9 pr-10 ${confirmPassword && !passwordsMatch ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  className={`pl-9 pr-10 h-9 ${confirmPassword && !passwordsMatch ? "border-destructive focus-visible:ring-destructive" : ""}`}
                   autoComplete="new-password"
                   required
                 />
@@ -273,7 +469,7 @@ export function RegisterView() {
             <Button
               type="submit"
               className="w-full mt-2 font-medium"
-              disabled={loading || !phone.trim() || !password || !confirmPassword || !passwordsMatch}
+              disabled={loading || !phone.trim() || !password || !confirmPassword || !passwordsMatch || (phoneValidation?.isValidated && !phoneValidation.isAcceptable)}
             >
               {loading ? (
                 <>

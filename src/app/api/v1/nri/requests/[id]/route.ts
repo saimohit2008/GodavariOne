@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, audit } from "@/lib/auth";
 import { ok, fail, handler, getClientIp } from "@/lib/validation";
 import { z } from "zod";
 import { recordNriStatusChange, sendNriWorkflowNotification } from "@/lib/nri";
@@ -341,4 +341,94 @@ export const PATCH = handler(async (req: NextRequest, { params }: { params: Prom
   }
 
   return ok({ ok: true, request });
+});
+
+// DELETE /api/v1/nri/requests/[id] — Super Admin strongly protected permanent deletion
+export const DELETE = handler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  const { id } = await params;
+  const ctx = await getCurrentUser(req);
+  if (!ctx) return fail("Authentication required", 401);
+
+  // Strictly Super Admin only
+  if (ctx.user.role !== "SUPER_ADMIN") {
+    if (ctx.user.role === "NRI_SERVICE_MANAGER") {
+      return fail("Permanent deletion is strictly restricted to Super Admin only. NRI Service Managers can only archive requests.", 403);
+    }
+    return fail("Insufficient permissions to permanently delete NRI requests", 403);
+  }
+
+  const request = await db.nriPackageRequest.findUnique({
+    where: { id },
+    include: {
+      quotations: {
+        where: { status: { in: ["CONFIRMED", "ACCEPTED"] } },
+      },
+    },
+  });
+
+  if (!request) return fail("Package request not found", 404);
+
+  // Safety Requirement 1: Must be archived first
+  if (request.status !== "ARCHIVED") {
+    return fail("Only archived requests can be permanently deleted. Please archive the request first.", 400);
+  }
+
+  // Safety Requirement 2: Financial, confirmed package and quotation retention protection
+  const hadConfirmedStatus = await db.nriStatusHistory.findFirst({
+    where: {
+      requestId: id,
+      OR: [{ fromStatus: "CONFIRMED" }, { toStatus: "CONFIRMED" }],
+    },
+  });
+
+  if (
+    request.confirmedQuotationId ||
+    request.quotations.length > 0 ||
+    hadConfirmedStatus
+  ) {
+    return fail(
+      "Cannot permanently delete request with confirmed packages or accepted quotations. Retention and legal data protection rules prohibit deletion.",
+      400
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+  const reason = (body?.reason || "").trim();
+  if (reason.length < 10) {
+    return fail("A mandatory deletion reason (minimum 10 characters) is required for legal and audit compliance", 422);
+  }
+
+  const confirmReference = (body?.confirmReference || "").trim();
+  if (confirmReference !== request.referenceNumber && confirmReference !== "PERMANENTLY DELETE") {
+    return fail(`Explicit confirmation failed. You must provide the exact reference number "${request.referenceNumber}" to confirm deletion.`, 422);
+  }
+
+  // Record audit trail BEFORE deletion
+  await audit({
+    actorId: ctx.user.id,
+    action: "NRI_REQUEST_PERMANENT_DELETE",
+    targetType: "NRI_PACKAGE_REQUEST",
+    targetId: id,
+    details: {
+      referenceNumber: request.referenceNumber,
+      visitorName: request.visitorName,
+      visitorEmail: request.visitorEmail,
+      visitorPhone: request.visitorPhone,
+      groupSize: request.groupSize,
+      arrivalDate: request.arrivalDate,
+      departureDate: request.departureDate,
+      reason,
+      deletedByRole: ctx.user.role,
+    },
+    ip: getClientIp(req),
+  });
+
+  // Permanently delete the request (child records cascade via database foreign keys)
+  await db.nriPackageRequest.delete({ where: { id } });
+
+  return ok({
+    ok: true,
+    message: "NRI package request permanently deleted in compliance with data retention requirements",
+    deletedReference: request.referenceNumber,
+  });
 });

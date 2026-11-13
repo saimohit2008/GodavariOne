@@ -17,12 +17,13 @@ export const POST = handler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
   if (!body) return fail("Invalid JSON body");
 
-  const { phone, password, confirmPassword, name, email } = body as {
+  const { phone, password, confirmPassword, name, email, countryCode } = body as {
     phone?: string;
     password?: string;
     confirmPassword?: string;
     name?: string;
     email?: string;
+    countryCode?: string;
     otpCode?: string; // accepted optionally for backward compatibility
   };
 
@@ -33,8 +34,8 @@ export const POST = handler(async (req: NextRequest) => {
     return fail("Password is required", 400);
   }
 
-  // 1. Validate and normalize the mobile number
-  const phoneNorm = normalizeMobileNumber(phone);
+  // 1. Validate and normalize the mobile number with international support
+  const phoneNorm = normalizeMobileNumber(phone, countryCode);
   if (!phoneNorm.isValid) {
     return fail(phoneNorm.error || "Invalid mobile number format", 400);
   }

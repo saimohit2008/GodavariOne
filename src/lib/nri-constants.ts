@@ -16,7 +16,8 @@ export type NriRequestStatus =
   | "DECLINED"
   | "EXPIRED"
   | "CANCELLED"
-  | "CLOSED";
+  | "CLOSED"
+  | "ARCHIVED";
 
 export type NriQuotationStatus =
   | "DRAFT"
@@ -93,23 +94,25 @@ export const NRI_STATUS_META: Record<NriRequestStatus, { label: string; color: s
   EXPIRED: { label: "Expired", color: "bg-gray-100 text-gray-800 border-gray-200", badgeVariant: "outline" },
   CANCELLED: { label: "Cancelled", color: "bg-rose-100 text-rose-800 border-rose-200", badgeVariant: "destructive" },
   CLOSED: { label: "Closed", color: "bg-gray-200 text-gray-700 border-gray-300", badgeVariant: "outline" },
+  ARCHIVED: { label: "Archived", color: "bg-slate-200 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300", badgeVariant: "outline" },
 };
 
 // Valid status lifecycle transitions
 export const VALID_REQUEST_TRANSITIONS: Record<NriRequestStatus, NriRequestStatus[]> = {
-  SUBMITTED: ["ASSIGNED", "IN_PROGRESS", "CANCELLED", "CLOSED"],
-  ASSIGNED: ["IN_PROGRESS", "QUOTATION_DRAFT", "QUOTATION_SENT", "DECLINED", "EXPIRED", "CANCELLED", "CLOSED"],
-  IN_PROGRESS: ["QUOTATION_DRAFT", "QUOTATION_SENT", "DECLINED", "CANCELLED", "CLOSED"],
-  QUOTATION_DRAFT: ["QUOTATION_SENT", "CANCELLED", "CLOSED"],
-  QUOTATION_SENT: ["REVISION_REQUESTED", "QUOTATION_ACCEPTED", "DECLINED", "EXPIRED", "CANCELLED", "CLOSED"],
-  REVISION_REQUESTED: ["QUOTATION_SENT", "DECLINED", "CANCELLED", "CLOSED"],
-  QUOTATION_ACCEPTED: ["AWAITING_FINAL_CONFIRMATION", "CANCELLED", "CLOSED"],
-  AWAITING_FINAL_CONFIRMATION: ["CONFIRMED", "DECLINED", "CANCELLED", "CLOSED"],
-  CONFIRMED: ["CLOSED", "CANCELLED"],
-  DECLINED: ["ASSIGNED", "CLOSED"],
-  EXPIRED: ["ASSIGNED", "CLOSED"],
-  CANCELLED: ["CLOSED"],
-  CLOSED: ["ASSIGNED"], // Super admin can reopen
+  SUBMITTED: ["ASSIGNED", "IN_PROGRESS", "CANCELLED", "CLOSED", "ARCHIVED"],
+  ASSIGNED: ["IN_PROGRESS", "QUOTATION_DRAFT", "QUOTATION_SENT", "DECLINED", "EXPIRED", "CANCELLED", "CLOSED", "ARCHIVED"],
+  IN_PROGRESS: ["QUOTATION_DRAFT", "QUOTATION_SENT", "DECLINED", "CANCELLED", "CLOSED", "ARCHIVED"],
+  QUOTATION_DRAFT: ["QUOTATION_SENT", "CANCELLED", "CLOSED", "ARCHIVED"],
+  QUOTATION_SENT: ["REVISION_REQUESTED", "QUOTATION_ACCEPTED", "DECLINED", "EXPIRED", "CANCELLED", "CLOSED", "ARCHIVED"],
+  REVISION_REQUESTED: ["QUOTATION_SENT", "DECLINED", "CANCELLED", "CLOSED", "ARCHIVED"],
+  QUOTATION_ACCEPTED: ["AWAITING_FINAL_CONFIRMATION", "CANCELLED", "CLOSED", "ARCHIVED"],
+  AWAITING_FINAL_CONFIRMATION: ["CONFIRMED", "DECLINED", "CANCELLED", "CLOSED", "ARCHIVED"],
+  CONFIRMED: ["CLOSED", "CANCELLED"], // Confirmed cannot directly archive; cancellation required first
+  DECLINED: ["ASSIGNED", "CLOSED", "ARCHIVED"],
+  EXPIRED: ["ASSIGNED", "CLOSED", "ARCHIVED"],
+  CANCELLED: ["CLOSED", "ARCHIVED"],
+  CLOSED: ["ASSIGNED", "ARCHIVED"], // Super admin can reopen or archive
+  ARCHIVED: ["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "QUOTATION_DRAFT", "QUOTATION_SENT", "REVISION_REQUESTED", "QUOTATION_ACCEPTED", "DECLINED", "CANCELLED", "CLOSED"],
 };
 
 export function isValidNriStatusTransition(from: NriRequestStatus, to: NriRequestStatus, role: string): boolean {

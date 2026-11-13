@@ -60,9 +60,9 @@ export function handler<T extends (...args: never[]) => Promise<unknown>>(fn: T)
 
 export const phoneSchema = z
   .string()
-  .min(10, "Phone number must be at least 10 digits")
-  .max(15, "Phone number too long")
-  .regex(/^[0-9+\-\s()]+$/, "Invalid phone number");
+  .min(7, "Phone number must be at least 7 digits")
+  .max(25, "Phone number too long")
+  .regex(/^[0-9+\-\s()a-zA-Z:_]+$/, "Invalid phone number");
 
 export const passwordSchema = z
   .string()
@@ -75,24 +75,72 @@ export interface NormalizedPhone {
   national: string;
   e164: string;
   primary: string;
+  countryCode?: string;
   isValid: boolean;
   error?: string;
 }
 
 /**
  * Normalizes mobile numbers with support for Indian mobile numbers (+91 / 0 / 10 digits)
- * and international E.164 formats (+...).
+ * and international E.164 formats (+...), supporting country-specific prefixes.
  */
-export function normalizeMobileNumber(raw: string): NormalizedPhone {
+export function normalizeMobileNumber(raw: string, countryCode?: string): NormalizedPhone {
   if (!raw || typeof raw !== "string") {
     return { raw: "", digits: "", national: "", e164: "", primary: "", isValid: false, error: "Mobile number is required" };
   }
 
   const trimmed = raw.trim();
-  const digits = trimmed.replace(/\D/g, "");
 
-  if (digits.length < 10) {
-    return { raw: trimmed, digits, national: digits, e164: "", primary: digits, isValid: false, error: "Mobile number must be at least 10 digits" };
+  // Synthetic Google identity phone representation (e.g. google:10293847561)
+  if (trimmed.startsWith("google:")) {
+    return {
+      raw: trimmed,
+      digits: trimmed.replace(/\D/g, ""),
+      national: trimmed,
+      e164: trimmed,
+      primary: trimmed,
+      isValid: true,
+    };
+  }
+
+  let digits = trimmed.replace(/\D/g, "");
+
+  // If a country code is provided and the raw input does NOT already start with '+'
+  if (countryCode && !trimmed.startsWith("+")) {
+    const code = countryCode.toUpperCase().trim();
+    if (code === "US" || code === "CA") {
+      if (digits.length === 10) {
+        const e164 = `+1${digits}`;
+        return { raw: trimmed, digits, national: digits, e164, primary: e164, countryCode: code, isValid: true };
+      }
+      if (digits.length === 11 && digits.startsWith("1")) {
+        const national = digits.slice(1);
+        const e164 = `+${digits}`;
+        return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: true };
+      }
+    } else if (code === "GB") {
+      let national = digits;
+      if (digits.startsWith("0")) national = digits.slice(1);
+      const e164 = `+44${national}`;
+      return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length >= 10 && national.length <= 11 };
+    } else if (code === "AE") {
+      let national = digits;
+      if (digits.startsWith("0")) national = digits.slice(1);
+      const e164 = `+971${national}`;
+      return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length === 9 };
+    } else if (code === "SG") {
+      const e164 = `+65${digits}`;
+      return { raw: trimmed, digits, national: digits, e164, primary: e164, countryCode: code, isValid: digits.length === 8 };
+    } else if (code === "AU") {
+      let national = digits;
+      if (digits.startsWith("0")) national = digits.slice(1);
+      const e164 = `+61${national}`;
+      return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length === 9 };
+    }
+  }
+
+  if (digits.length < 8 && !trimmed.startsWith("+")) {
+    return { raw: trimmed, digits, national: digits, e164: "", primary: digits, isValid: false, error: "Mobile number must be at least 8 digits" };
   }
   if (digits.length > 15) {
     return { raw: trimmed, digits, national: digits, e164: "", primary: digits, isValid: false, error: "Mobile number cannot exceed 15 digits" };
@@ -116,6 +164,7 @@ export function normalizeMobileNumber(raw: string): NormalizedPhone {
     national = digits.slice(-10);
   }
 
+  const isIndianValid = national.length === 10;
   const e164 = `+91${national}`;
   return {
     raw: trimmed,
@@ -123,7 +172,9 @@ export function normalizeMobileNumber(raw: string): NormalizedPhone {
     national,
     e164,
     primary: national,
-    isValid: true,
+    countryCode: "IN",
+    isValid: isIndianValid,
+    error: isIndianValid ? undefined : "Indian mobile numbers must be exactly 10 digits",
   };
 }
 

@@ -64,7 +64,12 @@ describe("Godavari One — Super Admin Mobile Number Change OTP Verification Sui
       },
     });
     await prisma.user.deleteMany({
-      where: { id: { in: [TEST_ADMIN_ID, TEST_VISITOR_ID, TEST_OTHER_USER_ID] } },
+      where: {
+        OR: [
+          { id: { in: [TEST_ADMIN_ID, TEST_VISITOR_ID, TEST_OTHER_USER_ID] } },
+          { phone: { in: [TEST_ADMIN_INITIAL_PHONE, NEW_TARGET_PHONE, TEST_OTHER_PHONE] } },
+        ],
+      },
     });
 
     // 1. Seed Super Admin account with verified recovery email
@@ -137,7 +142,12 @@ describe("Godavari One — Super Admin Mobile Number Change OTP Verification Sui
       },
     });
     await prisma.user.deleteMany({
-      where: { id: { in: [TEST_ADMIN_ID, TEST_VISITOR_ID, TEST_OTHER_USER_ID] } },
+      where: {
+        OR: [
+          { id: { in: [TEST_ADMIN_ID, TEST_VISITOR_ID, TEST_OTHER_USER_ID] } },
+          { phone: { in: [TEST_ADMIN_INITIAL_PHONE, NEW_TARGET_PHONE, TEST_OTHER_PHONE] } },
+        ],
+      },
     });
     await prisma.$disconnect();
   });

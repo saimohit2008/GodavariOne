@@ -965,11 +965,19 @@ function GhatMonitoringTab() {
   async function updateReportStatus(reportId: string, status: string) {
     setUpdatingReport(reportId);
     try {
-      await api.patch(`/ghats/reports/${reportId}`, { status });
-      toast({ title: "Report Status Updated", description: `Marked as ${status}` });
+      await api.patch(`/ghats/reports/${reportId}`, { reviewStatus: status, status });
+      toast({
+        title: status === "ACKNOWLEDGED" ? "Report Acknowledged" : "Report Resolved",
+        description: `Ground report marked as ${status.toLowerCase()}`,
+      });
       refetchReports();
-    } catch (e) {
-      toast({ title: "Error", description: e instanceof ApiError ? e.message : "Failed to update", variant: "destructive" });
+    } catch (e: any) {
+      const details = e?.details as any[];
+      const errorMsg =
+        e instanceof ApiError
+          ? (Array.isArray(details) && details.length ? details.map((d: any) => d.message).join(", ") : e.message)
+          : "Failed to update report";
+      toast({ title: "Error", description: errorMsg, variant: "destructive" });
     } finally {
       setUpdatingReport(null);
     }
@@ -1089,45 +1097,65 @@ function GhatMonitoringTab() {
             </div>
           ) : reports?.items?.length ? (
             <div className="divide-y">
-              {reports.items.map((r: any) => (
-                <div key={r.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div>
+              {reports.items.map((r: any) => {
+                const currentStatus = r.reviewStatus || r.status || "SUBMITTED";
+                const isAck = currentStatus === "ACKNOWLEDGED";
+                const isResolved = currentStatus === "RESOLVED";
+
+                return (
+                  <div key={r.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm">{r.listing?.name || "Ghat"}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {r.crowdStatus}
+                        </Badge>
+                        <Badge
+                          variant={isResolved ? "default" : isAck ? "secondary" : "outline"}
+                          className={`text-xs ${
+                            isResolved
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                              : isAck
+                              ? "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950 dark:text-sky-300"
+                              : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                        >
+                          {currentStatus}
+                        </Badge>
+                      </div>
+                      {r.notes && <p className="text-xs text-muted-foreground mt-1">{r.notes}</p>}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Reporter: {r.reporter?.name || "Ground Reporter"} · {new Date(r.createdAt).toLocaleString()}
+                        {r.acknowledgedAt && (
+                          <span className="ml-2 text-sky-600 dark:text-sky-400">
+                            · Acknowledged {new Date(r.acknowledgedAt).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </p>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">{r.listing?.name || "Ghat"}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {r.crowdStatus}
-                      </Badge>
-                      <Badge
-                        variant={r.status === "APPROVED" || r.status === "ACKNOWLEDGED" ? "default" : "secondary"}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={updatingReport === r.id || isAck || isResolved}
+                        onClick={() => updateReportStatus(r.id, "ACKNOWLEDGED")}
                         className="text-xs"
                       >
-                        {r.status || r.reviewStatus || "SUBMITTED"}
-                      </Badge>
+                        {isAck || isResolved ? "Acknowledged" : "Acknowledge"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={isResolved ? "outline" : "default"}
+                        disabled={updatingReport === r.id || isResolved}
+                        onClick={() => updateReportStatus(r.id, "RESOLVED")}
+                        className="text-xs"
+                      >
+                        {isResolved ? "Resolved" : "Resolve"}
+                      </Button>
                     </div>
-                    {r.notes && <p className="text-xs text-muted-foreground mt-1">{r.notes}</p>}
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Reporter: {r.reporter?.name || "Ground Reporter"} · {new Date(r.createdAt).toLocaleString()}
-                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={updatingReport === r.id}
-                      onClick={() => updateReportStatus(r.id, "ACKNOWLEDGED")}
-                    >
-                      Acknowledge
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={updatingReport === r.id}
-                      onClick={() => updateReportStatus(r.id, "RESOLVED")}
-                    >
-                      Resolve
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="p-8 text-center text-sm text-muted-foreground">No recent crowd reports submitted.</div>

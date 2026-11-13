@@ -19,7 +19,7 @@ import {
 import {
   Briefcase, Calendar, MapPin, Phone, Mail, Clock, Plus, Search, RefreshCw,
   CheckCircle2, AlertTriangle, FileText, Check, ChevronRight, Eye, ShieldCheck,
-  Send, UserCheck, CheckSquare, ListChecks, ArrowRight,
+  Send, UserCheck, CheckSquare, ListChecks, ArrowRight, Archive, RotateCcw, AlertCircle,
 } from "lucide-react";
 import { NRI_STATUS_META, type NriRequestStatus } from "@/lib/nri-constants";
 
@@ -88,18 +88,72 @@ export function NriServiceManagerDashboard() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
 
-  async function loadRequests() {
+  // Archive & Restore state
+  const [archivedTab, setArchivedTab] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiving, setArchiving] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreReason, setRestoreReason] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  async function loadRequests(isArchived = archivedTab) {
     setLoading(true);
     try {
-      const res = await api.get<{ items: any[] }>("/nri/requests?limit=100");
+      const res = await api.get<{ items: any[] }>(`/nri/requests?limit=100&archived=${isArchived ? "true" : "false"}`);
       setRequests(res.items || []);
-      if (res.items?.length > 0 && !selectedRequest) {
+      if (res.items?.length > 0) {
         loadRequestDetail(res.items[0].id);
+      } else {
+        setSelectedRequest(null);
       }
     } catch (e: any) {
       toast({ title: "Failed to load assigned requests", description: e.message, variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleArchive(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedRequest) return;
+    if (archiveReason.trim().length < 3) {
+      toast({ title: "Reason required", description: "Please enter a valid archive reason (min 3 characters).", variant: "destructive" });
+      return;
+    }
+    setArchiving(true);
+    try {
+      await api.post(`/nri/requests/${selectedRequest.id}/archive`, { reason: archiveReason.trim() });
+      toast({ title: "Request Archived", description: `Request ${selectedRequest.referenceNumber} has been safely archived.` });
+      setArchiveOpen(false);
+      setArchiveReason("");
+      loadRequests(archivedTab);
+    } catch (e: any) {
+      toast({ title: "Archive failed", description: e instanceof ApiError ? e.message : "Failed to archive", variant: "destructive" });
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function handleRestore(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedRequest) return;
+    setRestoring(true);
+    try {
+      const res = await api.post<{ ok: boolean; restoredStatus: string }>(`/nri/requests/${selectedRequest.id}/restore`, {
+        reason: restoreReason.trim() || "Restored by NRI Service Manager",
+      });
+      toast({
+        title: "Request Restored",
+        description: `Request ${selectedRequest.referenceNumber} restored to ${res.restoredStatus || "active"} status.`,
+      });
+      setRestoreOpen(false);
+      setRestoreReason("");
+      loadRequests(archivedTab);
+    } catch (e: any) {
+      toast({ title: "Restore failed", description: e instanceof ApiError ? e.message : "Failed to restore", variant: "destructive" });
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -304,7 +358,7 @@ export function NriServiceManagerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={loadRequests} disabled={loading} className="border-teal-400/30 text-white hover:bg-teal-800">
+          <Button size="sm" variant="outline" onClick={() => loadRequests()} disabled={loading} className="border-teal-400/30 text-white hover:bg-teal-800">
             <RefreshCw className={`size-4 mr-1.5 ${loading ? "animate-spin" : ""}`} /> Refresh
           </Button>
         </div>
@@ -315,10 +369,40 @@ export function NriServiceManagerDashboard() {
         {/* Left Column: Assigned Requests (4 cols) */}
         <div className="lg:col-span-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-base flex items-center gap-1.5">
+            <h2 className="font-bold text-sm flex items-center gap-1.5">
               <FileText className="size-4 text-teal-600" />
-              Assigned Requests ({requests.length})
+              Requests ({requests.length})
             </h2>
+            <div className="flex items-center gap-1 p-0.5 bg-muted/60 rounded-lg border text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setArchivedTab(false);
+                  loadRequests(false);
+                }}
+                className={`px-2.5 py-1 rounded-md font-semibold text-xs transition-all ${
+                  !archivedTab
+                    ? "bg-card text-foreground shadow-sm border border-border/80"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setArchivedTab(true);
+                  loadRequests(true);
+                }}
+                className={`px-2.5 py-1 rounded-md font-semibold text-xs transition-all ${
+                  archivedTab
+                    ? "bg-card text-foreground shadow-sm border border-border/80"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Archived
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -395,22 +479,51 @@ export function NriServiceManagerDashboard() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setRejectOpen(true)}
-                        className="text-destructive hover:bg-destructive/10"
-                      >
-                        Reject Request
-                      </Button>
-                      {selectedRequest.status === "QUOTATION_ACCEPTED" && (
+                      {selectedRequest.status === "ARCHIVED" ? (
                         <Button
                           size="sm"
-                          onClick={handleConfirmTrip}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          variant="outline"
+                          onClick={() => {
+                            setRestoreReason("");
+                            setRestoreOpen(true);
+                          }}
+                          className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950 font-semibold"
                         >
-                          Confirm Trip
+                          <RotateCcw className="size-3.5 mr-1" /> Restore Request
                         </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setRejectOpen(true)}
+                            className="text-destructive hover:bg-destructive/10"
+                          >
+                            Reject Request
+                          </Button>
+                          {selectedRequest.status !== "CONFIRMED" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setArchiveReason("");
+                                setArchiveOpen(true);
+                              }}
+                              className="text-slate-700 border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900"
+                            >
+                              <Archive className="size-3.5 mr-1" /> Archive Request
+                            </Button>
+                          )}
+                          {selectedRequest.status === "QUOTATION_ACCEPTED" && (
+                            <Button
+                              size="sm"
+                              onClick={handleConfirmTrip}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              Confirm Trip
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -899,6 +1012,76 @@ export function NriServiceManagerDashboard() {
               <Button type="button" variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={rejecting} variant="destructive">
                 {rejecting ? "Rejecting..." : "Confirm Rejection"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* Dialog: Archive Request */}
+      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="size-4 text-slate-600" />
+              Archive Request — {selectedRequest?.referenceNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Archiving safely moves this request out of your active pipeline. All client details, itinerary items, and quotations are preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleArchive} className="space-y-4">
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>Soft Archival:</strong> Records are preserved in the database. You can restore this request whenever the visitor returns.
+              </span>
+            </div>
+            <div>
+              <Label>Archive Reason <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={archiveReason}
+                onChange={(e) => setArchiveReason(e.target.value)}
+                placeholder="e.g. Pilgrimage dates expired / Client requested postponement / Dormant request"
+                rows={3}
+                required
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Minimum 3 characters required.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setArchiveOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={archiving || archiveReason.trim().length < 3} className="bg-slate-800 hover:bg-slate-900 text-white">
+                {archiving ? "Archiving..." : "Confirm Archive"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Restore Request */}
+      <Dialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+              <RotateCcw className="size-4 text-emerald-600" />
+              Restore Request — {selectedRequest?.referenceNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Restoring this request moves it back to your active workflow with all historical data and quotations intact.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRestore} className="space-y-4">
+            <div>
+              <Label>Restore Notes (Optional)</Label>
+              <Input
+                value={restoreReason}
+                onChange={(e) => setRestoreReason(e.target.value)}
+                placeholder="e.g. Client reactivated travel plans"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRestoreOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={restoring} className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+                {restoring ? "Restoring..." : "Confirm Restore"}
               </Button>
             </DialogFooter>
           </form>

@@ -24,11 +24,11 @@ import {
 export const POST = handler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
   if (!body) return fail("Invalid JSON body");
-  const { phone, password } = body as { phone?: string; password?: string };
+  const { phone, password, countryCode } = body as { phone?: string; password?: string; countryCode?: string };
   if (!phone || !password) return fail("Mobile number and password are required", 400);
 
   // 1. Normalize the mobile number using the same rules as registration
-  const phoneNorm = normalizeMobileNumber(phone);
+  const phoneNorm = normalizeMobileNumber(phone, countryCode);
   if (!phoneNorm.isValid) {
     return fail(phoneNorm.error || "Invalid mobile number format", 400);
   }

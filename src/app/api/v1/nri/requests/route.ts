@@ -56,6 +56,7 @@ export const GET = handler(async (req: NextRequest) => {
   const status = searchParams.get("status") || undefined;
   const referenceNumber = searchParams.get("referenceNumber") || undefined;
   const managerId = searchParams.get("managerId") || undefined;
+  const archived = searchParams.get("archived"); // "true", "only", "all"
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 50)));
 
   // Public reference lookup (for visitors checking via reference number without logging in)
@@ -91,9 +92,21 @@ export const GET = handler(async (req: NextRequest) => {
   if (!ctx) return fail("Authentication required", 401);
 
   const where: Record<string, unknown> = {};
-  if (status && status !== "ALL") {
-    where.status = status;
+  if (status === "ARCHIVED" || archived === "true" || archived === "only") {
+    where.status = "ARCHIVED";
+  } else if (archived === "all" || archived === "include") {
+    if (status && status !== "ALL") {
+      where.status = status;
+    }
+  } else {
+    // Default: active non-archived requests
+    if (status && status !== "ALL") {
+      where.status = status;
+    } else {
+      where.status = { not: "ARCHIVED" };
+    }
   }
+
   if (referenceNumber) {
     where.referenceNumber = referenceNumber;
   }
@@ -105,12 +118,16 @@ export const GET = handler(async (req: NextRequest) => {
       { visitorEmail: ctx.user.email || "__never__" },
       { visitorPhone: ctx.user.phone },
     ];
+    if (!where.status) {
+      where.status = { not: "ARCHIVED" };
+    }
   } else if (ctx.user.role === "BUSINESS_OWNER") {
     where.assignments = {
       some: {
         providerId: ctx.user.id,
       },
     };
+    where.status = { not: "ARCHIVED" };
   } else if (ctx.user.role === "NRI_SERVICE_MANAGER") {
     // NRI Service Manager sees assigned requests
     where.assignedManagerId = ctx.user.id;
@@ -145,6 +162,10 @@ export const GET = handler(async (req: NextRequest) => {
       messages: {
         orderBy: { createdAt: "desc" },
         take: 1,
+      },
+      statusHistory: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
       },
     },
     orderBy: { createdAt: "desc" },

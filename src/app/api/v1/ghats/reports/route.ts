@@ -7,7 +7,7 @@ import { z } from "zod";
 
 // GET /api/v1/ghats/reports?listingId=...&status=...
 export const GET = handler(async (req: NextRequest) => {
-  const ctx = await getCurrentUser();
+  const ctx = await getCurrentUser(req);
   const { searchParams } = new URL(req.url);
   const listingId = searchParams.get("listingId");
   const status = searchParams.get("status") || undefined;
@@ -35,7 +35,7 @@ export const GET = handler(async (req: NextRequest) => {
 
 // POST /api/v1/ghats/reports — ghat reporter submits a crowd observation
 export const POST = handler(async (req: NextRequest) => {
-  const ctx = await getCurrentUser();
+  const ctx = await getCurrentUser(req);
   if (!ctx) return fail("Authentication required", 401);
   if (!canReportCrowd(ctx.user.role as any)) return fail("Insufficient permissions to report crowd", 403);
 
