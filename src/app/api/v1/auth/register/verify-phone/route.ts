@@ -34,10 +34,23 @@ export const POST = handler(async (req: NextRequest) => {
     return fail("Registration session has expired. Please initiate registration again.", 400);
   }
 
-  // Mark phone as verified in pending registration
+  // Verify phone OTP if supplied, preserving invariant that phone ownership is not claimed without proof
+  let isPhoneOwnershipVerified = false;
+  if (parsed.data.otpCode) {
+    const { verifyPhoneOtpChallenge } = await import("@/lib/phone-verification");
+    const otpRes = await verifyPhoneOtpChallenge({
+      phone: nationalPhone,
+      otpCode: parsed.data.otpCode,
+    });
+    if (otpRes.success) {
+      isPhoneOwnershipVerified = true;
+    }
+  }
+
+  // Mark pending registration phone status honestly
   await db.pendingRegistration.update({
     where: { phone: nationalPhone },
-    data: { phoneVerified: true },
+    data: { phoneVerified: isPhoneOwnershipVerified },
   });
 
   // Ensure email verification code is dispatched via Resend

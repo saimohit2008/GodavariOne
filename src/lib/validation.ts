@@ -104,36 +104,56 @@ export function normalizeMobileNumber(raw: string, countryCode?: string): Normal
   }
 
   let digits = trimmed.replace(/\D/g, "");
+  let national = digits;
 
   // If a country code is provided and the raw input does NOT already start with '+'
   if (countryCode && !trimmed.startsWith("+")) {
     const code = countryCode.toUpperCase().trim();
-    if (code === "US" || code === "CA") {
+    if (code === "IN") {
+      if (digits.length === 11 && digits.startsWith("0")) {
+        national = digits.slice(1);
+      } else if (digits.length === 12 && digits.startsWith("91")) {
+        national = digits.slice(2);
+      } else if (digits.length > 10 && digits.startsWith("91")) {
+        national = digits.slice(digits.length - 10);
+      } else {
+        national = digits;
+      }
+
+      const e164 = `+91${national}`;
+      if (national.length !== 10) {
+        return { raw: trimmed, digits, national, e164, primary: national, countryCode: "IN", isValid: false, error: "Indian mobile numbers must be exactly 10 digits" };
+      }
+      if (!["6", "7", "8", "9"].includes(national[0])) {
+        return { raw: trimmed, digits, national, e164, primary: national, countryCode: "IN", isValid: false, error: "Indian mobile numbers must start with 6, 7, 8, or 9" };
+      }
+      if (national === "9999999999" || national === "0000000000" || national === "1111111111" || national === "5555555555") {
+        return { raw: trimmed, digits, national, e164, primary: national, countryCode: "IN", isValid: false, error: "Invalid mobile number: repeating dummy digit sequences are not permitted" };
+      }
+      return { raw: trimmed, digits, national, e164, primary: national, countryCode: "IN", isValid: true };
+    } else if (code === "US" || code === "CA") {
       if (digits.length === 10) {
         const e164 = `+1${digits}`;
         return { raw: trimmed, digits, national: digits, e164, primary: e164, countryCode: code, isValid: true };
       }
       if (digits.length === 11 && digits.startsWith("1")) {
-        const national = digits.slice(1);
+        national = digits.slice(1);
         const e164 = `+${digits}`;
         return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: true };
       }
     } else if (code === "GB") {
-      let national = digits;
-      if (digits.startsWith("0")) national = digits.slice(1);
+      national = digits.startsWith("0") ? digits.slice(1) : digits;
       const e164 = `+44${national}`;
       return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length >= 10 && national.length <= 11 };
     } else if (code === "AE") {
-      let national = digits;
-      if (digits.startsWith("0")) national = digits.slice(1);
+      national = digits.startsWith("0") ? digits.slice(1) : digits;
       const e164 = `+971${national}`;
       return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length === 9 };
     } else if (code === "SG") {
       const e164 = `+65${digits}`;
       return { raw: trimmed, digits, national: digits, e164, primary: e164, countryCode: code, isValid: digits.length === 8 };
     } else if (code === "AU") {
-      let national = digits;
-      if (digits.startsWith("0")) national = digits.slice(1);
+      national = digits.startsWith("0") ? digits.slice(1) : digits;
       const e164 = `+61${national}`;
       return { raw: trimmed, digits, national, e164, primary: e164, countryCode: code, isValid: national.length === 9 };
     }
@@ -153,7 +173,7 @@ export function normalizeMobileNumber(raw: string, countryCode?: string): Normal
   }
 
   // Indian numbers: normalize prefixes +91, 91, or leading 0 to 10-digit national number
-  let national = digits;
+  national = digits;
   if (digits.length === 11 && digits.startsWith("0")) {
     national = digits.slice(1);
   } else if (digits.length === 12 && digits.startsWith("91")) {
@@ -164,8 +184,46 @@ export function normalizeMobileNumber(raw: string, countryCode?: string): Normal
     national = digits.slice(-10);
   }
 
-  const isIndianValid = national.length === 10;
   const e164 = `+91${national}`;
+  if (national.length !== 10) {
+    return {
+      raw: trimmed,
+      digits,
+      national,
+      e164,
+      primary: national,
+      countryCode: "IN",
+      isValid: false,
+      error: "Indian mobile numbers must be exactly 10 digits",
+    };
+  }
+
+  if (!["6", "7", "8", "9"].includes(national[0])) {
+    return {
+      raw: trimmed,
+      digits,
+      national,
+      e164,
+      primary: national,
+      countryCode: "IN",
+      isValid: false,
+      error: "Indian mobile numbers must start with 6, 7, 8, or 9",
+    };
+  }
+
+  if (national === "9999999999" || national === "0000000000" || national === "1111111111" || national === "5555555555") {
+    return {
+      raw: trimmed,
+      digits,
+      national,
+      e164,
+      primary: national,
+      countryCode: "IN",
+      isValid: false,
+      error: "Invalid mobile number: repeating dummy digit sequences are not permitted",
+    };
+  }
+
   return {
     raw: trimmed,
     digits,
@@ -173,8 +231,7 @@ export function normalizeMobileNumber(raw: string, countryCode?: string): Normal
     e164,
     primary: national,
     countryCode: "IN",
-    isValid: isIndianValid,
-    error: isIndianValid ? undefined : "Indian mobile numbers must be exactly 10 digits",
+    isValid: true,
   };
 }
 

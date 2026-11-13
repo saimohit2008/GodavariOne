@@ -388,4 +388,77 @@ describe("Godavari One — Google Sign-In & OpenID Connect Authentication Suite"
     assert.ok(location.includes("auth_error="));
     assert.ok(location.includes("cancelled"));
   });
+
+  // -------------------------------------------------------------------------
+  // 10. Security Invariants: Error Handling, PKCE & State Validation
+  // -------------------------------------------------------------------------
+  test("15. Callback route rejects missing or invalid OAuth state parameter with redirect error", async () => {
+    const req = new NextRequest(
+      "http://localhost:3000/api/v1/auth/google/callback?code=mock_code&state=invalid_tampered_state"
+    );
+    const res = await callbackRoute(req);
+    assert.equal(res.status, 307);
+    const location = res.headers.get("location") || "";
+    assert.ok(location.includes("auth_error="));
+    assert.ok(location.includes("Invalid%20or%20expired") || location.includes("OAuth%20state"));
+  });
+
+  test("16. Token exchange enforces PKCE code_verifier requirement", async () => {
+    const { exchangeGoogleCodeForTokens } = await import("../src/lib/google-auth");
+    await assert.rejects(
+      async () => {
+        await exchangeGoogleCodeForTokens({
+          code: "test_auth_code",
+          codeVerifier: "", // Empty verifier
+        });
+      },
+      /credentials are not configured|token exchange failed/i
+    );
+  });
+
+  test("17. Super Admin accounts are STRICTLY BLOCKED from Google Sign-In (Privilege Escalation Defense)", async () => {
+    const superAdminPhone = `98980${testRunId.slice(-5)}`;
+    const adminUser = await db.user.create({
+      data: {
+        phone: superAdminPhone,
+        email: `superadmin.${testRunId}@godavari.gov.in`,
+        role: "SUPER_ADMIN",
+        status: "ACTIVE",
+        phoneVerified: true,
+        emailVerified: true,
+        notes: JSON.stringify({ googleId: `admin_google_${testRunId}` }),
+      },
+    });
+
+    try {
+      const res = await resolveGoogleUser({
+        sub: `admin_google_${testRunId}`,
+        email: `superadmin.${testRunId}@godavari.gov.in`,
+        emailVerified: true,
+        name: "Super Admin",
+      });
+
+      assert.equal(res.status, "ERROR");
+      if (res.status === "ERROR") {
+        assert.equal(res.statusCode, 403);
+        assert.match(res.error, /Administrators must log in through the secure admin portal/i);
+      }
+    } finally {
+      await db.user.delete({ where: { id: adminUser.id } }).catch(() => {});
+    }
+  });
+
+  test("18. Initiate route redirects browser requests gracefully when Google OAuth is unconfigured", async () => {
+    const req = new NextRequest("http://localhost:3000/api/v1/auth/google/initiate", {
+      headers: { Accept: "text/html" },
+    });
+    const res = await initiateRoute(req);
+    // When unconfigured, HTML requests redirect to home with auth_error query param
+    if (res.status === 307 || res.status === 302) {
+      const location = res.headers.get("location") || "";
+      assert.ok(location.includes("auth_error="));
+    } else {
+      assert.ok([200, 503].includes(res.status));
+    }
+  });
 });

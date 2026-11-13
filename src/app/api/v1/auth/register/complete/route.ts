@@ -69,7 +69,8 @@ export const POST = handler(async (req: NextRequest) => {
       passwordHash: pending.passwordHash,
       role: "VISITOR",
       status: "ACTIVE",
-      phoneVerified: true,
+      // phoneVerified honestly reflects whether phone was proven via OTP; email is verified by Resend OTP
+      phoneVerified: pending.phoneVerified || false,
       emailVerified: true,
     },
   });

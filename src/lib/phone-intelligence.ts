@@ -50,6 +50,7 @@ export class MockPhoneIntelligenceProvider implements PhoneIntelligenceProvider 
     const guessed = guessCountryFromPhone(phoneE164);
     const country = countryCode ? getCountryByCode(countryCode) : guessed.country;
 
+    const national = norm.national;
     const digitsOnly = norm.digits;
 
     // 1. Test scenario: Simulated provider timeout
@@ -78,17 +79,23 @@ export class MockPhoneIntelligenceProvider implements PhoneIntelligenceProvider 
     // E.g. North American NPA 555-0100 through 555-0199 are fictional/unallocated
     const isIndianUnallocated =
       country.code === "IN" &&
-      digitsOnly.length === 10 &&
-      !["6", "7", "8", "9"].includes(digitsOnly[0]);
+      (national.length !== 10 || !["6", "7", "8", "9"].includes(national[0]));
 
     const isUSUnallocated =
       (country.code === "US" || country.code === "CA") &&
-      (digitsOnly.includes("55501") || phoneE164.includes("5550199"));
+      (national.includes("55501") || phoneE164.includes("5550199"));
 
-    if (isIndianUnallocated || isUSUnallocated || phoneE164.includes("0000000")) {
+    const isFictitiousFake =
+      national === "5555555554" ||
+      national === "9999999999" ||
+      national === "0000000000" ||
+      national === "1111111111" ||
+      phoneE164.includes("0000000");
+
+    if (isIndianUnallocated || isUSUnallocated || isFictitiousFake) {
       return {
         phoneE164: norm.e164 || phoneE164,
-        nationalFormat: norm.national,
+        nationalFormat: norm.national || national,
         countryCode: country.code,
         callingCode: country.callingCode,
         validityStatus: "INVALID",
@@ -98,7 +105,9 @@ export class MockPhoneIntelligenceProvider implements PhoneIntelligenceProvider 
         reachabilityStatus: "UNREACHABLE",
         phoneOwnershipVerified: false,
         isAcceptableForRegistration: false,
-        rejectionReason: "Number belongs to an unallocated or invalid telecommunications range.",
+        rejectionReason: isIndianUnallocated
+          ? (national.length !== 10 ? "Indian mobile numbers must be exactly 10 digits." : "Indian mobile numbers must start with 6, 7, 8, or 9. Number belongs to an unallocated or invalid telecommunications range.")
+          : "Number belongs to an unallocated or invalid telecommunications range.",
         provider: this.name,
       };
     }
@@ -162,11 +171,11 @@ export class MockPhoneIntelligenceProvider implements PhoneIntelligenceProvider 
     }
 
     // 8. Default: Real, valid, allocated mobile number
-    let carrier = "Jio";
+    let carrier = "Reliance Jio Infocomm";
     if (country.code === "IN") {
-      if (digitsOnly.startsWith("98") || digitsOnly.startsWith("99")) carrier = "Airtel India";
-      else if (digitsOnly.startsWith("91") || digitsOnly.startsWith("93")) carrier = "Vodafone Idea";
-      else if (digitsOnly.startsWith("7") || digitsOnly.startsWith("8")) carrier = "Reliance Jio Infocomm";
+      if (national.startsWith("98") || national.startsWith("99")) carrier = "Airtel India";
+      else if (national.startsWith("91") || national.startsWith("93")) carrier = "Vodafone Idea";
+      else if (national.startsWith("6") || national.startsWith("7") || national.startsWith("8")) carrier = "Reliance Jio Infocomm";
       else carrier = "Bharat Sanchar Nigam Limited (BSNL)";
     } else if (country.code === "US") {
       carrier = "Verizon Wireless";
@@ -407,10 +416,10 @@ export class PhoneIntelligenceService {
         countryCode: country.code,
         callingCode: country.callingCode,
         validityStatus: "INVALID",
-        allocationStatus: "UNKNOWN",
+        allocationStatus: "UNALLOCATED",
         lineType: "UNKNOWN",
         carrierName: null,
-        reachabilityStatus: "INCONCLUSIVE",
+        reachabilityStatus: "UNREACHABLE",
         phoneOwnershipVerified: false,
         isAcceptableForRegistration: false,
         rejectionReason: norm.error || "Invalid mobile number format for the selected country.",
